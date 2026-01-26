@@ -31,7 +31,6 @@ RUN npm install --prefix /app/backend --no-save prisma@5.7.0
 # Copy Next.js standalone output and static assets explicitly
 COPY --from=frontend-builder /app/frontend/.next/standalone /app/frontend
 COPY --from=frontend-builder /app/frontend/.next/static /app/frontend/.next/static
-COPY --from=frontend-builder /app/frontend/public /app/frontend/public
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 EXPOSE 3000 3001
