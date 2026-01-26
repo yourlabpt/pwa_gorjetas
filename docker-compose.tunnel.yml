@@ -2,9 +2,9 @@ services:
   app:
     build:
       args:
-        NEXT_PUBLIC_API_URL: ""
+        NEXT_PUBLIC_API_URL: "/api"
     environment:
-      NEXT_PUBLIC_API_URL: ""
+      NEXT_PUBLIC_API_URL: "/api"
       CORS_ORIGINS: "*"    # allow any origin since tunnel URL is dynamic
 
   caddy:
