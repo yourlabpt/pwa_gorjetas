@@ -1,6 +1,8 @@
 node_modules
 npm-debug.log
 yarn.lock
+.env
+.env.*
 .git
 .gitignore
 backend/node_modules

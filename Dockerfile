@@ -2,6 +2,8 @@
 
 FROM node:18-bullseye-slim AS frontend-builder
 WORKDIR /app/frontend
+ARG NEXT_PUBLIC_API_URL="http://localhost:3001"
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend ./
@@ -24,6 +26,8 @@ ENV NODE_ENV=production
 # Ensure OpenSSL available for Prisma
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 COPY --from=backend-builder /app/backend /app/backend
+# Keep Prisma CLI available in the runtime image for migrations
+RUN npm install --prefix /app/backend --no-save prisma@5.7.0
 COPY --from=frontend-builder /app/frontend /app/frontend
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
