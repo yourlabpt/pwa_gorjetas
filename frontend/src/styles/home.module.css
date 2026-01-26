@@ -1,0 +1,351 @@
+.homeContainer {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0;
+}
+
+/* Hero Section */
+.heroSection {
+  background: white;
+  color: #0f172a;
+  padding: 60px 32px;
+  border-radius: 12px;
+  text-align: center;
+  margin-bottom: 48px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-top: 4px solid #0f172a;
+}
+
+.heroTitle {
+  font-size: 48px;
+  font-weight: 700;
+  margin: 0 0 12px 0;
+  letter-spacing: -0.5px;
+}
+
+.heroSubtitle {
+  font-size: 20px;
+  font-weight: 400;
+  margin: 0;
+  opacity: 0.95;
+}
+
+/* Primary Actions */
+.primaryActions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px;
+  margin-bottom: 48px;
+}
+
+.actionButton {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.actionButton:hover {
+  border-color: #667eea;
+  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.15);
+  transform: translateY(-2px);
+}
+
+.primaryButton {
+  border-color: #0f172a;
+  background: #f8fafc;
+}
+
+.primaryButton:hover {
+  border-color: #0f172a;
+  background: #f1f5f9;
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.1);
+}
+
+.secondaryButton {
+  border-color: #0284c7;
+}
+
+.secondaryButton:hover {
+  border-color: #0284c7;
+  background: #f0f9ff;
+  box-shadow: 0 8px 16px rgba(2, 132, 199, 0.1);
+}
+
+.tertiaryButton {
+  border-color: #059669;
+}
+
+.tertiaryButton:hover {
+  border-color: #059669;
+  background: #f0fdf4;
+  box-shadow: 0 8px 16px rgba(5, 150, 105, 0.1);
+}
+
+.actionIcon {
+  font-size: 40px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.actionContent {
+  flex: 1;
+}
+
+.actionTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 4px 0;
+}
+
+.actionDescription {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0;
+}
+
+/* Management Section */
+.managementSection {
+  margin-bottom: 48px;
+}
+
+.sectionTitle {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 24px 0;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.managementCard {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.managementCard:hover {
+  border-color: #d1d5db;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+
+.cardIcon {
+  font-size: 32px;
+  line-height: 1;
+  flex-shrink: 0;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  border-radius: 8px;
+}
+
+.cardContent {
+  flex: 1;
+}
+
+.cardContent h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 4px 0;
+}
+
+.cardContent p {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.cardArrow {
+  font-size: 20px;
+  color: #d1d5db;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+.managementCard:hover .cardArrow {
+  color: #0f172a;
+  transform: translateX(4px);
+}
+
+/* Info Section */
+.infoSection {
+  margin-bottom: 32px;
+}
+
+.infoBox {
+  background: #f8fafc;
+  padding: 32px;
+  border-radius: 12px;
+  border-left: 4px solid #0f172a;
+}
+
+.infoBox h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 12px 0;
+}
+
+.infoBox p {
+  font-size: 14px;
+  color: #4b5563;
+  line-height: 1.6;
+  margin: 0 0 16px 0;
+}
+
+.infoDetails {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.infoPill {
+  display: inline-block;
+  background: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #0f172a;
+  border: 1px solid #0f172a;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .homeContainer {
+    padding: 0 16px;
+  }
+
+  .heroSection {
+    padding: 40px 24px;
+    margin-bottom: 32px;
+  }
+
+  .heroTitle {
+    font-size: 32px;
+  }
+
+  .heroSubtitle {
+    font-size: 16px;
+  }
+
+  .primaryActions {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  .actionButton {
+    padding: 20px;
+    gap: 16px;
+  }
+
+  .actionIcon {
+    font-size: 32px;
+  }
+
+  .actionTitle {
+    font-size: 16px;
+  }
+
+  .actionDescription {
+    font-size: 13px;
+  }
+
+  .cardGrid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .managementCard {
+    padding: 16px;
+  }
+
+  .cardIcon {
+    width: 44px;
+    height: 44px;
+    font-size: 28px;
+  }
+
+  .infoBox {
+    padding: 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .heroSection {
+    padding: 32px 16px;
+    margin-bottom: 24px;
+  }
+
+  .heroTitle {
+    font-size: 24px;
+  }
+
+  .heroSubtitle {
+    font-size: 14px;
+  }
+
+  .primaryActions {
+    margin-bottom: 24px;
+  }
+
+  .actionButton {
+    flex-direction: column;
+    text-align: center;
+    gap: 12px;
+  }
+
+  .actionIcon {
+    font-size: 36px;
+  }
+
+  .sectionTitle {
+    font-size: 18px;
+    margin-bottom: 16px;
+  }
+
+  .managementCard {
+    padding: 14px;
+  }
+
+  .cardIcon {
+    width: 40px;
+    height: 40px;
+    font-size: 24px;
+  }
+
+  .cardContent h3 {
+    font-size: 14px;
+  }
+
+  .cardContent p {
+    font-size: 12px;
+  }
+}
