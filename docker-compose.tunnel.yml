@@ -1,0 +1,28 @@
+services:
+  app:
+    build:
+      args:
+        NEXT_PUBLIC_API_URL: ""
+    environment:
+      NEXT_PUBLIC_API_URL: ""
+      CORS_ORIGINS: "*"    # allow any origin since tunnel URL is dynamic
+
+  caddy:
+    volumes:
+      - ./deploy/Caddyfile.tunnel:/etc/caddy/Caddyfile:ro
+    ports: []        # no host ports; caddy only serves internally for the tunnel
+    expose:
+      - "8080"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on:
+      - caddy
+    command: tunnel --no-autoupdate --url http://caddy:8080
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge

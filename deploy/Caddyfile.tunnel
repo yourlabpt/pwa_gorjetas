@@ -1,0 +1,25 @@
+http://:8080 {
+  encode zstd gzip
+
+  @api path /api/*
+
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "no-referrer"
+    Permissions-Policy "geolocation=(), microphone=(), camera=()"
+  }
+
+  handle_path /api/* {
+    reverse_proxy app:3001
+  }
+
+  handle {
+    reverse_proxy app:3000
+  }
+
+  log {
+    output stdout
+    format json
+  }
+}

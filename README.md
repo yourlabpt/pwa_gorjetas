@@ -28,9 +28,9 @@ docker compose --env-file .env.production -f docker-compose.prod.yml exec app sh
 ```
 6) Verify and follow logs (if `app` is not `Up`, check the app logs and fix env values):
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml ps
-docker compose --env-file .env.production -f docker-compose.prod.yml logs -f caddy
-docker compose --env-file .env.production -f docker-compose.prod.yml logs -f app
+sudo docker compose --env-file .env.production -f docker-compose.prod.yml ps
+sudo docker compose --env-file .env.production -f docker-compose.prod.yml logs -f caddy
+sudo docker compose --env-file .env.production -f docker-compose.prod.yml logs -f app
 ```
 7) Access at `https://<DOMAIN>`; only Caddy on 80/443 is exposed and proxies `/api` to the backend on the private network.
 8) Stop/update:
@@ -44,3 +44,18 @@ docker compose --env-file .env.production -f docker-compose.prod.yml up -d --bui
 - Use a real domain (not `app.example.com`) and point DNS A/AAAA to this server; port 80 must be reachable for HTTP validation.
 - Set `ACME_EMAIL` in `.env.production` so Caddy can register with the CA.
 - If issuance fails, check `docker compose ... logs -f caddy`, fix DNS/email, then re-run `docker compose --env-file .env.production -f docker-compose.prod.yml up -d` to retry.
+- DuckDNS note: update your IP before retrying:
+  `curl "https://www.duckdns.org/update?domains=<your-subdomain>&token=<your-token>&ip=$(curl -s https://api.ipify.org)"`, then verify with `dig +short <your-subdomain>.duckdns.org` matches your public IP.
+
+### Simpler, no-public-ports option (Cloudflare Tunnel, free)
+Use this if you are behind CGNAT/can’t open 80/443. Cloudflare handles TLS; we keep Caddy HTTP-only internally and skip ACME.
+1) Install Docker as usual; `cp .env.production.example .env.production` (DOMAIN not used here, but fill DB/JWT).
+2) Start the stack with the tunnel override (build uses relative API path):
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.tunnel.yml up -d --build
+```
+3) Start a quick tunnel (prints a public `https://*.trycloudflare.com` URL):
+```bash
+docker compose -f docker-compose.prod.yml -f docker-compose.tunnel.yml run --rm cloudflared
+```
+Keep this running; the URL serves frontend and `/api` via the tunnel. To stop, Ctrl+C then `docker compose ... down`.

@@ -1,6 +1,9 @@
 import axios, { AxiosInstance } from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// Prefer explicit NEXT_PUBLIC_API_URL; otherwise use same-origin in the browser, or localhost in SSR
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' ? '' : 'http://localhost:3001');
 const TOKEN_KEY = 'auth_token';
 
 class ApiClient {
