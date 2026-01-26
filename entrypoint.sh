@@ -8,7 +8,7 @@ PORT="$BACKEND_PORT" node /app/backend/dist/main.js &
 BACK_PID=$!
 
 cd /app/frontend
-PORT="$FRONTEND_PORT" HOSTNAME="0.0.0.0" node .next/standalone/server.js &
+PORT="$FRONTEND_PORT" HOSTNAME="0.0.0.0" npm run start -- --hostname 0.0.0.0 --port "$FRONTEND_PORT" &
 FRONT_PID=$!
 
 trap "kill $BACK_PID $FRONT_PID" INT TERM

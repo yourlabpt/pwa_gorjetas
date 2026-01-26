@@ -28,9 +28,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -
 COPY --from=backend-builder /app/backend /app/backend
 # Keep Prisma CLI available in the runtime image for migrations
 RUN npm install --prefix /app/backend --no-save prisma@5.7.0
-# Copy Next.js standalone output and static assets explicitly
-COPY --from=frontend-builder /app/frontend/.next/standalone /app/frontend
-COPY --from=frontend-builder /app/frontend/.next/static /app/frontend/.next/static
+# Copy full built frontend (includes .next, node_modules, package files, public)
+COPY --from=frontend-builder /app/frontend /app/frontend
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 EXPOSE 3000 3001
