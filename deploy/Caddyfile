@@ -1,6 +1,8 @@
 {
   # Disable Caddy admin API and rely on automatic HTTPS
   admin off
+  # Optional: set your ACME email for certificate issuance
+  {$ACME_EMAIL}
 }
 
 {$DOMAIN} {
