@@ -6,9 +6,39 @@ import { CreateFuncionarioDto, UpdateFuncionarioDto } from './dto/funcionario.dt
 export class FuncionariosService {
   constructor(private prisma: PrismaService) {}
 
+  private sanitizePayload(
+    data: CreateFuncionarioDto | UpdateFuncionarioDto,
+  ): Record<string, unknown> {
+    const payload: Record<string, unknown> = { ...data };
+
+    if ('data_admissao' in data) {
+      payload.data_admissao =
+        data.data_admissao === null
+          ? null
+          : data.data_admissao
+            ? new Date(`${data.data_admissao}T00:00:00Z`)
+            : undefined;
+    }
+
+    if ('iban' in data) {
+      payload.iban =
+        data.iban === null
+          ? null
+          : data.iban?.trim()
+            ? data.iban.trim()
+            : undefined;
+    }
+
+    if ('salario' in data) {
+      payload.salario = data.salario ?? undefined;
+    }
+
+    return payload;
+  }
+
   async create(data: CreateFuncionarioDto) {
     return this.prisma.funcionario.create({
-      data,
+      data: this.sanitizePayload(data) as any,
     });
   }
 
@@ -33,7 +63,7 @@ export class FuncionariosService {
   async update(funcID: number, data: UpdateFuncionarioDto) {
     return this.prisma.funcionario.update({
       where: { funcID },
-      data,
+      data: this.sanitizePayload(data) as any,
     });
   }
 

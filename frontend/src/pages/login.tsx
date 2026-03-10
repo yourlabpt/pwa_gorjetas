@@ -37,7 +37,7 @@ export default function LoginPage() {
               <p className={styles.kicker}>Acesso</p>
               <h1>Entrar</h1>
               <p className={styles.subtitle}>
-                Use suas credenciais para acessar o painel. Gestores veem o restaurante atribuído; supervisores veem o grupo.
+                Use suas credenciais para acessar o painel. Gerentes veem o restaurante atribuído; supervisores veem o grupo.
               </p>
             </div>
           </div>
@@ -52,7 +52,7 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  placeholder="gestor@restaurante.com"
+                  placeholder="gerente@restaurante.com"
                 />
               </div>
 
@@ -67,16 +67,17 @@ export default function LoginPage() {
                 />
               </div>
 
-              <div className={styles.filters} style={{ justifyContent: 'center' }}>
-                <button type="submit" className="btn btn-primary" disabled={loading}>
+              <div className={`${styles.filters} ${styles.formActions}`} style={{ justifyContent: 'center' }}>
+                <button type="submit" className={styles.btnPrimary} disabled={loading}>
                   {loading ? 'Entrando...' : 'Entrar'}
                 </button>
                 <button
                   type="button"
-                  className="btn btn-secondary"
+                  className={styles.btnSecondary}
                   onClick={() => router.push('/register')}
+                  disabled={loading}
                 >
-                  Criar novo usuário
+                  Criar conta
                 </button>
               </div>
             </form>

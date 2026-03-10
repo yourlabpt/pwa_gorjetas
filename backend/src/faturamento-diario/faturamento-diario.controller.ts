@@ -14,6 +14,7 @@ import {
   CreateFaturamentoDiarioDto,
   UpdateFaturamentoDiarioDto,
   SaveFinanceiroSnapshotDto,
+  ComputePayoutsDto,
 } from './dto';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { assertRestaurantAccess } from '../auth/restaurant-access.util';
@@ -78,6 +79,21 @@ export class FaturamentoDiarioController {
   ) {
     assertRestaurantAccess(user, restID);
     return this.faturamentoDiarioService.update(id, restID, dto);
+  }
+
+  /**
+   * POST /faturamento-diario/compute?restID=N
+   * Server-side daily payout calculation using the restaurant's
+   * RegraDistribuicao rules. Does NOT persist anything — pure calculation.
+   */
+  @Post('compute')
+  async computePayouts(
+    @Query('restID', ParseIntPipe) restID: number,
+    @Body() dto: ComputePayoutsDto,
+    @CurrentUser() user: any,
+  ) {
+    assertRestaurantAccess(user, restID);
+    return this.faturamentoDiarioService.computePayouts(restID, dto);
   }
 
   @Post('snapshot')

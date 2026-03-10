@@ -34,6 +34,28 @@ export class RelatoriosService {
         transacao: true,
       },
     });
+    const presencas = await this.prisma.$queryRaw<
+      Array<{ funcID: number; data: Date; presente: boolean }>
+    >`
+      SELECT "funcID", "data", "presente"
+      FROM "funcionario_presenca_diaria"
+      WHERE "restID" = ${restID}
+    `;
+    const filteredPresencas = presencas.filter((presenca) => {
+      if (!presenca.presente) return false;
+      if (from && presenca.data < new Date(from)) return false;
+      if (to && presenca.data > new Date(to)) return false;
+      return true;
+    });
+    const diasTrabalhados = new Map<number, Set<string>>();
+    filteredPresencas.forEach((presenca) => {
+      if (!diasTrabalhados.has(presenca.funcID)) {
+        diasTrabalhados.set(presenca.funcID, new Set<string>());
+      }
+      diasTrabalhados
+        .get(presenca.funcID)!
+        .add(presenca.data.toISOString().split('T')[0]);
+    });
 
     // Group by employee
     const reportMap: Map<
@@ -95,6 +117,7 @@ export class RelatoriosService {
         ),
         count_transacoes: entry.count_transacoes.size,
         total_mbway: entry.total_mbway.toNumber(),
+        days_worked: diasTrabalhados.get(entry.funcID)?.size || 0,
       }))
       .sort((a, b) => b.total_gorjeta - a.total_gorjeta);
 

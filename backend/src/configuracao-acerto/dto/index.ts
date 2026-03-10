@@ -2,7 +2,7 @@ import { IsString, IsNumber, IsOptional, Min, Max } from 'class-validator';
 
 export class CreateConfiguracaoAcertoDto {
   @IsString()
-  funcao: string; // "Garçom", "Cozinha", "Supervisor", "Gestor", etc.
+  funcao: string; // "Garçom", "Cozinha", "Supervisor", "Gerente", etc.
 
   @IsString()
   base_calculo: string; // "GORJETA_TOTAL" | "FATURAMENTO_BASE" | "ABSOLUTO" | "GORJETA_REMAINING" | "FATURAMENTO_EXTRA"

@@ -188,3 +188,49 @@
   color: #1f2937;
   font-size: 14px;
 }
+
+@media (max-width: 768px) {
+  .container {
+    padding: 16px 12px;
+  }
+
+  .configSection {
+    padding: 16px;
+  }
+
+  .restauranteSelector {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .restauranteSelector select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .cardGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    justify-content: stretch;
+  }
+
+  .actions > * {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 12px 8px;
+  }
+
+  .configSection {
+    padding: 12px;
+  }
+
+  .header h1 {
+    font-size: 22px;
+  }
+}

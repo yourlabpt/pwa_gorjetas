@@ -5,12 +5,18 @@ import {
   UpdateFaturamentoDiarioDto,
   FaturamentoDiarioResponseDto,
   SaveFinanceiroSnapshotDto,
+  ComputePayoutsDto,
 } from './dto';
 import { Prisma } from '@prisma/client';
+import { FinanceEngineService } from '../finance-engine/finance-engine.service';
+import { DailyFinanceComputation } from '../finance-engine/finance-engine.types';
 
 @Injectable()
 export class FaturamentoDiarioService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private financeEngine: FinanceEngineService,
+  ) {}
 
   /**
    * Normalize date-only strings to UTC midnight to avoid timezone drift.
@@ -24,6 +30,181 @@ export class FaturamentoDiarioService {
     const d = new Date(`${dateInput}T00:00:00Z`);
     d.setUTCHours(0, 0, 0, 0);
     return d;
+  }
+
+  private normalizeRole(value: string): string {
+    return (value || '')
+      .toLowerCase()
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  private isStaffRole(funcao: string): boolean {
+    const role = this.normalizeRole(funcao);
+    return role === 'staff' || role.includes('garcom');
+  }
+
+  private buildStaffInputsFromDistrib(
+    funcionariosAtivos: Array<{ funcID: number; name: string; funcao: string }>,
+    distribRows: Array<{
+      funcID: number | null;
+      valor_pool: Prisma.Decimal | null;
+      valor_direto: Prisma.Decimal | null;
+    }>,
+  ): Array<{ funcID: number; valor_pool: number; valor_direto: number }> {
+    const map = new Map<number, { valor_pool: number; valor_direto: number }>();
+
+    distribRows.forEach((row) => {
+      if (row.funcID == null) return;
+      const prev = map.get(row.funcID) || { valor_pool: 0, valor_direto: 0 };
+      const pool =
+        row.valor_pool == null ? prev.valor_pool : Number(row.valor_pool.toNumber());
+      const direto =
+        row.valor_direto == null
+          ? prev.valor_direto
+          : Number(row.valor_direto.toNumber());
+      map.set(row.funcID, {
+        valor_pool: Math.max(pool || 0, 0),
+        valor_direto: Math.max(direto || 0, 0),
+      });
+    });
+
+    return funcionariosAtivos.map((func) => ({
+      funcID: func.funcID,
+      valor_pool: map.get(func.funcID)?.valor_pool || 0,
+      valor_direto: map.get(func.funcID)?.valor_direto || 0,
+    }));
+  }
+
+  private async buildRecomputedEntriesForDay(
+    restID: number,
+    dataFormatada: Date,
+    faturamento: any | null,
+    distribRows: Array<{
+      funcID: number | null;
+      role: string;
+      valor_pool: Prisma.Decimal | null;
+      valor_direto: Prisma.Decimal | null;
+      valor_teorico: Prisma.Decimal | null;
+      valor_pago: Prisma.Decimal;
+    }>,
+  ) {
+    if (!faturamento && distribRows.length === 0) {
+      return [];
+    }
+
+    const funcionariosAtivos = await this.prisma.funcionario.findMany({
+      where: { restID, ativo: true },
+      select: {
+        funcID: true,
+        name: true,
+        funcao: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const restaurante = await this.prisma.restaurante.findUnique({
+      where: { restID },
+      select: { percentagem_gorjeta_base: true },
+    });
+    const basePercentual = Number(restaurante?.percentagem_gorjeta_base || 0);
+
+    const staffInputs = this.buildStaffInputsFromDistrib(
+      funcionariosAtivos,
+      distribRows,
+    );
+    const staffInputByFuncID = new Map(
+      staffInputs.map((entry) => [entry.funcID, entry]),
+    );
+    const staffDirectTipPoolTotal = funcionariosAtivos.reduce((sum, func) => {
+      if (!this.isStaffRole(func.funcao)) return sum;
+      const input = staffInputByFuncID.get(func.funcID);
+      return sum + (input?.valor_direto || 0);
+    }, 0);
+    const valorTotalGorjetas =
+      faturamento?.valor_total_gorjetas?.toNumber() ??
+      staffInputs.reduce((sum, entry) => sum + (entry.valor_pool || 0), 0);
+    const faturamentoGlobal = faturamento?.faturamento_inserido?.toNumber() ?? 0;
+    const faturamentoComGorjeta =
+      faturamento?.faturamento_com_gorjeta?.toNumber() ?? faturamentoGlobal;
+    const faturamentoSemGorjeta =
+      faturamento?.faturamento_sem_gorjeta?.toNumber() ??
+      Math.max(faturamentoGlobal - valorTotalGorjetas, 0);
+
+    const computation = await this.financeEngine.computeDailyPayouts(
+      restID,
+      {
+        faturamento_global: faturamentoGlobal,
+        faturamento_com_gorjeta: faturamentoComGorjeta,
+        faturamento_sem_gorjeta: faturamentoSemGorjeta,
+        valor_total_gorjetas: valorTotalGorjetas,
+      },
+      {
+        insufficientFundsPolicy: 'PARTIAL',
+        data: dataFormatada,
+        staff_direct_tip_pool_total: staffDirectTipPoolTotal,
+        base_percentual: basePercentual,
+        staff_inputs: staffInputs,
+      },
+    );
+
+    const legacyInputByFuncID = new Map(
+      staffInputs.map((entry) => [entry.funcID, entry]),
+    );
+    const employeeMetaByFuncID = new Map(
+      funcionariosAtivos.map((f) => [f.funcID, { name: f.name, funcao: f.funcao }]),
+    );
+
+    const aggregate = new Map<
+      string,
+      {
+        funcID: number | null;
+        role: string;
+        employee_name: string | null;
+        employee_funcao: string | null;
+        valor_pool: number;
+        valor_direto: number;
+        valor_teorico: number;
+        valor_pago: number;
+      }
+    >();
+
+    computation.employee_breakdown.forEach((entry) => {
+      const key = `${entry.funcID ?? 'null'}::${entry.role_bucket}`;
+      const staffInput =
+        entry.funcID != null ? legacyInputByFuncID.get(entry.funcID) : undefined;
+      const employeeMeta =
+        entry.funcID != null ? employeeMetaByFuncID.get(entry.funcID) : undefined;
+
+      if (!aggregate.has(key)) {
+        aggregate.set(key, {
+          funcID: entry.funcID,
+          role: entry.role_bucket,
+          employee_name: entry.employee_name || employeeMeta?.name || null,
+          employee_funcao: employeeMeta?.funcao || null,
+          valor_pool: staffInput?.valor_pool || 0,
+          valor_direto: staffInput?.valor_direto || 0,
+          valor_teorico: 0,
+          valor_pago: 0,
+        });
+      }
+
+      const current = aggregate.get(key)!;
+      current.valor_teorico += entry.theoretical_value || 0;
+      current.valor_pago += entry.real_paid_value || 0;
+    });
+
+    return Array.from(aggregate.values()).map((entry) => ({
+      funcID: entry.funcID,
+      role: entry.role,
+      employee_name: entry.employee_name,
+      employee_funcao: entry.employee_funcao,
+      valor_pool: entry.valor_pool || 0,
+      valor_direto: entry.valor_direto || 0,
+      valor_teorico: entry.valor_teorico || 0,
+      valor_pago: entry.valor_pago || 0,
+      valor_nao_pago: Math.max((entry.valor_teorico || 0) - (entry.valor_pago || 0), 0),
+    }));
   }
 
   /**
@@ -277,16 +458,83 @@ export class FaturamentoDiarioService {
     });
   }
 
+  /**
+   * Server-side daily payout calculation.
+   * Uses the centralized FinanceEngineService against the supplied day's
+   * financial buckets. Does NOT persist anything.
+   */
+  async computePayouts(
+    restID: number,
+    dto: ComputePayoutsDto,
+  ): Promise<DailyFinanceComputation> {
+    return this.financeEngine.computeDailyPayouts(
+      restID,
+      {
+        faturamento_global: dto.faturamento_global,
+        faturamento_com_gorjeta:
+          dto.faturamento_com_gorjeta ?? dto.faturamento_global,
+        faturamento_sem_gorjeta:
+          dto.faturamento_sem_gorjeta ??
+          Math.max(dto.faturamento_global - dto.valor_total_gorjetas, 0),
+        valor_total_gorjetas: dto.valor_total_gorjetas,
+      },
+      {
+        allowNegativeBalances: dto.allowNegativeBalances ?? false,
+        insufficientFundsPolicy: dto.insufficientFundsPolicy ?? 'PARTIAL',
+        data: dto.data,
+        staff_direct_tip_pool_total: dto.staff_direct_tip_pool_total ?? 0,
+        base_percentual: dto.base_percentual,
+        staff_inputs: (dto.staff || []).map((entry) => ({
+          funcID: entry.funcID,
+          valor_pool: entry.valor_pool ?? 0,
+          valor_direto: entry.valor_direto ?? 0,
+        })),
+      },
+    );
+  }
+
   async saveSnapshot(
     restID: number,
     dto: SaveFinanceiroSnapshotDto,
   ): Promise<void> {
     const dataFormatada = this.normalizeDate(dto.data);
+    const computation = await this.financeEngine.computeDailyPayouts(
+      restID,
+      {
+        faturamento_global: dto.faturamento_global,
+        faturamento_com_gorjeta:
+          dto.faturamento_com_gorjeta ?? dto.faturamento_global,
+        faturamento_sem_gorjeta:
+          dto.faturamento_sem_gorjeta ??
+          Math.max(
+            dto.faturamento_global - (dto.valor_total_gorjetas ?? 0),
+            0,
+          ),
+        valor_total_gorjetas: dto.valor_total_gorjetas ?? 0,
+      },
+      {
+        insufficientFundsPolicy: dto.insufficientFundsPolicy ?? 'PARTIAL',
+        data: dataFormatada,
+        staff_direct_tip_pool_total: dto.staff_direct_tip_pool_total ?? 0,
+        base_percentual: dto.base_percentual,
+        staff_inputs: (dto.staff || []).map((entry) => ({
+          funcID: entry.funcID,
+          valor_pool: entry.valor_pool ?? 0,
+          valor_direto: entry.valor_direto ?? 0,
+        })),
+      },
+    );
 
     await this.prisma.$transaction(async (tx) => {
       const existing = await tx.faturamentoDiario.findUnique({
         where: { restID_data: { restID, data: dataFormatada } },
       });
+
+      const buckets = {
+        ...(dto.faturamento_com_gorjeta != null && { faturamento_com_gorjeta: new Prisma.Decimal(dto.faturamento_com_gorjeta) }),
+        ...(dto.faturamento_sem_gorjeta != null && { faturamento_sem_gorjeta: new Prisma.Decimal(dto.faturamento_sem_gorjeta) }),
+        ...(dto.valor_total_gorjetas != null && { valor_total_gorjetas: new Prisma.Decimal(dto.valor_total_gorjetas) }),
+      };
 
       if (existing) {
         await tx.faturamentoDiario.update({
@@ -295,6 +543,7 @@ export class FaturamentoDiarioService {
             faturamento_inserido: new Prisma.Decimal(dto.faturamento_global),
             faturamento_calculado: new Prisma.Decimal(dto.faturamento_global),
             diferenca_percentual: new Prisma.Decimal(0),
+            ...buckets,
           },
         });
       } else {
@@ -305,6 +554,7 @@ export class FaturamentoDiarioService {
             faturamento_inserido: new Prisma.Decimal(dto.faturamento_global),
             faturamento_calculado: new Prisma.Decimal(dto.faturamento_global),
             diferenca_percentual: new Prisma.Decimal(0),
+            ...buckets,
           },
         });
       }
@@ -315,73 +565,98 @@ export class FaturamentoDiarioService {
 
       const rows: Prisma.FaturamentoDiarioDistribuicaoCreateManyInput[] = [];
 
-      dto.staff.forEach((s) => {
-        rows.push({
-          restID,
-          data: dataFormatada,
-          funcID: s.funcID,
-          role: 'staff',
-          valor_pool: new Prisma.Decimal(s.valor_pool),
-          valor_direto: new Prisma.Decimal(s.valor_direto),
-          valor_teorico: null,
-          valor_pago: new Prisma.Decimal(s.valor_pago),
-        });
-      });
-
-      dto.gestores.forEach((g) => {
-        rows.push({
-          restID,
-          data: dataFormatada,
-          funcID: g.funcID,
-          role: 'gestor',
-          valor_pool: null,
-          valor_direto: null,
-          valor_teorico: new Prisma.Decimal(g.valor_teorico),
-          valor_pago: new Prisma.Decimal(g.valor_pago),
-        });
-      });
-
-      dto.supervisores.forEach((s) => {
-        rows.push({
-          restID,
-          data: dataFormatada,
-          funcID: s.funcID,
-          role: 'supervisor',
-          valor_pool: null,
-          valor_direto: null,
-          valor_teorico: new Prisma.Decimal(s.valor_teorico),
-          valor_pago: new Prisma.Decimal(s.valor_pago),
-        });
-      });
-
-      (dto.chamadores || []).forEach((c) => {
-        rows.push({
-          restID,
-          data: dataFormatada,
-          funcID: c.funcID,
-          role: 'chamador',
-          valor_pool: null,
-          valor_direto: null,
-          valor_teorico: null,
-          valor_pago: new Prisma.Decimal(c.valor_pago),
-        });
-      });
-
-      if (dto.cozinha_valor) {
-        rows.push({
-          restID,
-          data: dataFormatada,
-          funcID: null,
-          role: 'cozinha',
-          valor_pool: null,
-          valor_direto: null,
-          valor_teorico: null,
-          valor_pago: new Prisma.Decimal(dto.cozinha_valor),
-        });
+      if ((computation.role_breakdown || []).length === 0) {
+        throw new BadRequestException(
+          'Nenhuma distribuição calculada para este restaurante neste dia. Configure regras de distribuição ou valide os dados do dia antes de salvar o snapshot.',
+        );
       }
+
+      const legacyStaffByFuncID = new Map(
+        (dto.staff || []).map((s) => [
+          s.funcID,
+          { valor_pool: s.valor_pool || 0, valor_direto: s.valor_direto || 0 },
+        ]),
+      );
+
+      const aggregate = new Map<
+        string,
+        {
+          funcID: number | null;
+          role: string;
+          valor_pool: number | null;
+          valor_direto: number | null;
+          valor_teorico: number;
+          valor_pago: number;
+        }
+      >();
+
+      computation.employee_breakdown.forEach((entry) => {
+        const key = `${entry.funcID ?? 'null'}::${entry.role_bucket}`;
+        const staffLegacy =
+          entry.funcID != null
+            ? legacyStaffByFuncID.get(entry.funcID)
+            : undefined;
+
+        if (!aggregate.has(key)) {
+          aggregate.set(key, {
+            funcID: entry.funcID,
+            role: entry.role_bucket,
+            valor_pool: staffLegacy?.valor_pool ?? null,
+            valor_direto: staffLegacy?.valor_direto ?? null,
+            valor_teorico: 0,
+            valor_pago: 0,
+          });
+        }
+
+        const current = aggregate.get(key)!;
+        current.valor_teorico += entry.theoretical_value;
+        current.valor_pago += entry.real_paid_value;
+      });
+
+      aggregate.forEach((entry) => {
+        rows.push({
+          restID,
+          data: dataFormatada,
+          funcID: entry.funcID,
+          role: entry.role,
+          valor_pool:
+            entry.valor_pool == null
+              ? null
+              : new Prisma.Decimal(entry.valor_pool),
+          valor_direto:
+            entry.valor_direto == null
+              ? null
+              : new Prisma.Decimal(entry.valor_direto),
+          valor_teorico: new Prisma.Decimal(entry.valor_teorico),
+          valor_pago: new Prisma.Decimal(entry.valor_pago),
+        });
+      });
 
       if (rows.length) {
         await tx.faturamentoDiarioDistribuicao.createMany({ data: rows });
+      }
+
+      if (dto.presencas) {
+        const deduped = new Map<number, boolean>();
+        dto.presencas.forEach((entry) => {
+          if (!Number.isFinite(Number(entry.funcID))) return;
+          deduped.set(Number(entry.funcID), Boolean(entry.presente));
+        });
+
+        await tx.$executeRaw`
+          DELETE FROM "funcionario_presenca_diaria"
+          WHERE "restID" = ${restID}
+            AND "data" = ${dataFormatada}
+        `;
+
+        for (const [funcID, presente] of deduped.entries()) {
+          await tx.$executeRaw`
+            INSERT INTO "funcionario_presenca_diaria"
+              ("restID", "data", "funcID", "presente", "criadoEm", "atualizadoEm")
+            VALUES
+              (${restID}, ${dataFormatada}, ${funcID}, ${presente}, NOW(), NOW())
+          `;
+        }
       }
     });
   }
@@ -396,17 +671,29 @@ export class FaturamentoDiarioService {
     const distrib = await this.prisma.faturamentoDiarioDistribuicao.findMany({
       where: { restID, data: dataFormatada },
     });
+    const presencas = await this.prisma.$queryRaw<
+      Array<{ funcID: number; presente: boolean }>
+    >`
+      SELECT "funcID", "presente"
+      FROM "funcionario_presenca_diaria"
+      WHERE "restID" = ${restID}
+        AND "data" = ${dataFormatada}
+    `;
+
+    const recomputedEntries = await this.buildRecomputedEntriesForDay(
+      restID,
+      dataFormatada,
+      faturamento,
+      distrib as any,
+    );
 
     return {
       faturamento_inserido: faturamento?.faturamento_inserido?.toNumber() ?? null,
-      entries: distrib.map((d: any) => ({
-        funcID: d.funcID,
-        role: d.role,
-        valor_pool: d.valor_pool?.toNumber() || 0,
-        valor_direto: d.valor_direto?.toNumber() || 0,
-        valor_teorico: d.valor_teorico?.toNumber() || 0,
-        valor_pago: d.valor_pago?.toNumber() || 0,
-      })),
+      faturamento_com_gorjeta: faturamento?.faturamento_com_gorjeta?.toNumber() ?? null,
+      faturamento_sem_gorjeta: faturamento?.faturamento_sem_gorjeta?.toNumber() ?? null,
+      valor_total_gorjetas: faturamento?.valor_total_gorjetas?.toNumber() ?? null,
+      presencas,
+      entries: recomputedEntries,
     };
   }
 
@@ -436,6 +723,15 @@ export class FaturamentoDiarioService {
         },
       },
     });
+    const presencas = await this.prisma.$queryRaw<
+      Array<{ data: Date; funcID: number; presente: boolean }>
+    >`
+      SELECT "data", "funcID", "presente"
+      FROM "funcionario_presenca_diaria"
+      WHERE "restID" = ${restID}
+        AND "data" >= ${inicio}
+        AND "data" <= ${fim}
+    `;
 
     const distribByDate = distrib.reduce<Record<string, any[]>>((acc, d: any) => {
       const key = d.data.toISOString().split('T')[0];
@@ -443,23 +739,38 @@ export class FaturamentoDiarioService {
       acc[key].push(d);
       return acc;
     }, {});
+    const presencasByDate = presencas.reduce<Record<string, any[]>>((acc, p) => {
+      const key = p.data.toISOString().split('T')[0];
+      if (!acc[key]) acc[key] = [];
+      acc[key].push({
+        funcID: p.funcID,
+        presente: Boolean(p.presente),
+      });
+      return acc;
+    }, {});
 
-    return faturamentos.map((f) => {
+    const result = await Promise.all(faturamentos.map(async (f) => {
       const key = f.data.toISOString().split('T')[0];
-      const entries = distribByDate[key] || [];
+      const storedEntries = distribByDate[key] || [];
+      const dayPresencas = presencasByDate[key] || [];
+      const recomputedEntries = await this.buildRecomputedEntriesForDay(
+        restID,
+        f.data,
+        f,
+        storedEntries,
+      );
       return {
         data: key,
         faturamento_inserido: f.faturamento_inserido.toNumber(),
-        entries: entries.map((d: any) => ({
-          funcID: d.funcID,
-          role: d.role,
-          valor_pool: d.valor_pool?.toNumber() || 0,
-          valor_direto: d.valor_direto?.toNumber() || 0,
-          valor_teorico: d.valor_teorico?.toNumber() || 0,
-          valor_pago: d.valor_pago?.toNumber() || 0,
-        })),
+        faturamento_com_gorjeta: f.faturamento_com_gorjeta?.toNumber() ?? null,
+        faturamento_sem_gorjeta: f.faturamento_sem_gorjeta?.toNumber() ?? null,
+        valor_total_gorjetas: f.valor_total_gorjetas?.toNumber() ?? null,
+        presencas: dayPresencas,
+        entries: recomputedEntries,
       };
-    });
+    }));
+
+    return result;
   }
 
   /**

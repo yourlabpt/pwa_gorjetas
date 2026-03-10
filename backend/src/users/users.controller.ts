@@ -1,7 +1,18 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  ParseIntPipe,
+  Put,
+} from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { UserRole } from '@prisma/client';
+import { isAdminLike, isSuperAdmin } from '../auth/role.util';
+import { ResetPasswordDto } from './reset-password.dto';
 
 @Controller('users')
 export class UsersController {
@@ -9,16 +20,20 @@ export class UsersController {
 
   @Get()
   async list(@CurrentUser() user: any) {
-    if (user?.role !== UserRole.ADMIN) {
-      throw new Error('Apenas admin pode listar usuários');
+    if (!isAdminLike(user?.role)) {
+      throw new ForbiddenException(
+        'Apenas administradores podem listar usuários',
+      );
     }
     return this.usersService.findAll();
   }
 
   @Get(':id')
   async get(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
-    if (user?.role !== UserRole.ADMIN) {
-      throw new Error('Apenas admin pode visualizar usuário');
+    if (!isAdminLike(user?.role)) {
+      throw new ForbiddenException(
+        'Apenas administradores podem visualizar usuário',
+      );
     }
     return this.usersService.findOne(id);
   }
@@ -26,13 +41,28 @@ export class UsersController {
   @Put(':id/role')
   async updateRole(
     @Param('id', ParseIntPipe) id: number,
-    @Body('role') role: UserRole,
+    @Body('role') role: string,
     @CurrentUser() user: any,
   ) {
-    if (user?.role !== UserRole.ADMIN) {
-      throw new Error('Apenas admin pode alterar role');
+    if (!isAdminLike(user?.role)) {
+      throw new ForbiddenException(
+        'Apenas administradores podem alterar role',
+      );
     }
-    return this.usersService.updateRole(id, role);
+
+    if (role === UserRole.ADMIN && !isSuperAdmin(user?.role)) {
+      throw new ForbiddenException(
+        'Apenas SUPER_ADMIN pode promover usuários para Administrador',
+      );
+    }
+
+    if (role === UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException(
+        'Criação de SUPER_ADMIN é permitida apenas via bootstrap seguro',
+      );
+    }
+
+    return this.usersService.updateRole(id, role, user);
   }
 
   @Put(':id/restaurantes')
@@ -41,9 +71,35 @@ export class UsersController {
     @Body('restIDs') restIDs: number[],
     @CurrentUser() user: any,
   ) {
-    if (user?.role !== UserRole.ADMIN) {
-      throw new Error('Apenas admin pode definir restaurantes');
+    if (!isAdminLike(user?.role)) {
+      throw new ForbiddenException(
+        'Apenas administradores podem definir restaurantes',
+      );
     }
-    return this.usersService.setRestaurants(id, restIDs || []);
+    return this.usersService.setRestaurants(id, restIDs || [], user);
+  }
+
+  @Put(':id/password')
+  async resetPassword(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ResetPasswordDto,
+    @CurrentUser() user: any,
+  ) {
+    if (!isAdminLike(user?.role)) {
+      throw new ForbiddenException(
+        'Apenas administradores podem redefinir senha',
+      );
+    }
+    return this.usersService.resetPassword(id, dto.newPassword, user);
+  }
+
+  @Delete(':id')
+  async remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    if (!isAdminLike(user?.role)) {
+      throw new ForbiddenException(
+        'Apenas administradores podem remover usuários',
+      );
+    }
+    return this.usersService.deleteUser(id, user);
   }
 }

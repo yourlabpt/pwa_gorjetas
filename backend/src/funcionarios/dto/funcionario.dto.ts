@@ -1,4 +1,12 @@
-import { IsString, IsOptional, IsNumber, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsBoolean,
+  IsDateString,
+  Min,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateFuncionarioDto {
   @IsString()
@@ -16,7 +24,22 @@ export class CreateFuncionarioDto {
   funcao: string;
 
   @IsNumber()
+  @Type(() => Number)
   restID: number;
+
+  @IsOptional()
+  @IsDateString()
+  data_admissao?: string;
+
+  @IsOptional()
+  @IsString()
+  iban?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  salario?: number;
 }
 
 export class UpdateFuncionarioDto {
@@ -35,6 +58,20 @@ export class UpdateFuncionarioDto {
   @IsOptional()
   @IsString()
   funcao?: string;
+
+  @IsOptional()
+  @IsDateString()
+  data_admissao?: string;
+
+  @IsOptional()
+  @IsString()
+  iban?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  salario?: number;
 
   @IsOptional()
   @IsBoolean()

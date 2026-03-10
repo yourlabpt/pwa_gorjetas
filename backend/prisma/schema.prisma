@@ -13,36 +13,74 @@ datasource db {
 // ===== Auth Models =====
 
 enum UserRole {
+  SUPER_ADMIN
   ADMIN
-  GESTOR
+  GERENTE
   SUPERVISOR
 }
 
+// ===== Payout Rule Enums =====
+
+enum CalculationType {
+  PERCENT
+  FIXED_AMOUNT
+}
+
+enum CalculationBase {
+  FATURAMENTO_GLOBAL
+  FATURAMENTO_COM_GORJETA
+  FATURAMENTO_SEM_GORJETA
+  VALOR_TOTAL_GORJETAS
+}
+
+enum PaymentSource {
+  TIP_POOL
+  FINANCEIRO
+  ABSOLUTE_EXTERNAL
+}
+
+enum PercentMode {
+  ABSOLUTE_PERCENT
+  BASE_PERCENT_POINTS
+}
+
+enum EmployeeSplitMode {
+  EQUAL_SPLIT
+  PROPORTIONAL_TO_POOL_INPUT
+  DIRECT_INPUT_ONLY
+  FULL_RATE_PER_EMPLOYEE
+}
+
+enum SettlementType {
+  DIARIO
+  PERIODO
+}
+
 model User {
-  id             Int              @id @default(autoincrement())
-  name           String
-  email          String           @unique
-  passwordHash   String
-  role           UserRole         @default(GESTOR)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(GERENTE)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // Relations
-  restaurantes   UserRestaurant[]
+  restaurantes UserRestaurant[]
 
   @@map("users")
 }
 
 model UserRestaurant {
-  id           Int        @id @default(autoincrement())
+  id           Int       @id @default(autoincrement())
   userId       Int
   restID       Int
-  roleOverride UserRole?  // Optional override for this restaurant
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  roleOverride UserRole? // Optional override for this restaurant
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  restaurante  Restaurante @relation(fields: [restID], references: [restID], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  restaurante Restaurante @relation(fields: [restID], references: [restID], onDelete: Cascade)
 
   @@unique([userId, restID])
   @@index([restID])
@@ -52,49 +90,56 @@ model UserRestaurant {
 // ===== Core Models =====
 
 model Restaurante {
-  restID                        Int      @id @default(autoincrement())
-  name                          String
-  endereco                      String?
-  contacto                      String?
-  percentagem_gorjeta_base      Decimal  @db.Decimal(5, 2) // e.g., 11.00
-  ativo                         Boolean  @default(true)
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
+  restID                   Int      @id @default(autoincrement())
+  name                     String
+  endereco                 String?
+  contacto                 String?
+  percentagem_gorjeta_base Decimal  @db.Decimal(5, 2) // e.g., 11.00
+  ativo                    Boolean  @default(true)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
   // Relations
-  funcionarios_diretos          Funcionario[] @relation("FuncionarioDireto")
-  funcionarios_many             FuncionarioRestaurante[]
-  configuracoes_gorjetas        ConfiguracaoGorjetas[]
-  transacoes                    Transacao[]
-  limpeza                       Limpeza[]
-  faturamentos_diarios          FaturamentoDiario[]
-  configuracoes_acerto          ConfiguracaoAcerto[]
-  acertos_periodo               AcertoPeriodo[]
-  faturamento_distribuicoes     FaturamentoDiarioDistribuicao[]
-  user_access                   UserRestaurant[]
+  funcionarios_diretos      Funcionario[]                   @relation("FuncionarioDireto")
+  funcionarios_many         FuncionarioRestaurante[]
+  transacoes                Transacao[]
+  limpeza                   Limpeza[]
+  faturamentos_diarios      FaturamentoDiario[]
+  configuracoes_acerto      ConfiguracaoAcerto[]
+  acertos_periodo           AcertoPeriodo[]
+  faturamento_distribuicoes FaturamentoDiarioDistribuicao[]
+  user_access               UserRestaurant[]
+  fecho_templates           FechoFinanceiroTemplate[]
+  fechos_financeiros        FechoFinanceiro[]
+  regras_distribuicao       RegraDistribuicao[]
+  presencas_funcionarios    FuncionarioPresencaDiaria[]
 
   @@map("restaurantes")
 }
 
 model Funcionario {
-  funcID                        Int      @id @default(autoincrement())
-  name                          String
-  contacto                      String?
-  photo                         String?
-  funcao                        String   // garcom, cozinha, supervisor, chamador, etc.
-  ativo                         Boolean  @default(true)
-  restID                        Int?     // Optional: kept for backward compatibility
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
+  funcID        Int       @id @default(autoincrement())
+  name          String
+  contacto      String?
+  photo         String?
+  funcao        String // garcom, cozinha, supervisor, chamador, etc.
+  data_admissao DateTime? @db.Date
+  iban          String?
+  salario       Decimal?  @db.Decimal(12, 2)
+  ativo         Boolean   @default(true)
+  restID        Int? // Optional: kept for backward compatibility
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   // Relations
-  restaurante_direto            Restaurante? @relation("FuncionarioDireto", fields: [restID], references: [restID])
-  restaurantes                  FuncionarioRestaurante[]
-  transacoes_garcom             Transacao[]  @relation("garcom")
-  distribuicoes                 DistribuicaoGorjetas[]
-  limpeza_records               LimpezaRecord[]
-  acertos_funcionario           AcertoFuncionario[]
-  faturamento_distribuicoes     FaturamentoDiarioDistribuicao[]
+  restaurante_direto        Restaurante?                    @relation("FuncionarioDireto", fields: [restID], references: [restID])
+  restaurantes              FuncionarioRestaurante[]
+  transacoes_garcom         Transacao[]                     @relation("garcom")
+  distribuicoes             DistribuicaoGorjetas[]
+  limpeza_records           LimpezaRecord[]
+  acertos_funcionario       AcertoFuncionario[]
+  faturamento_distribuicoes FaturamentoDiarioDistribuicao[]
+  presencas                 FuncionarioPresencaDiaria[]
 
   @@index([restID, funcao])
   @@index([restID])
@@ -102,16 +147,16 @@ model Funcionario {
 }
 
 model FuncionarioRestaurante {
-  id                            Int      @id @default(autoincrement())
-  funcID                        Int
-  restID                        Int
-  funcao                        String   // Function at this specific restaurant
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  funcID    Int
+  restID    Int
+  funcao    String // Function at this specific restaurant
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  funcionario                   Funcionario @relation(fields: [funcID], references: [funcID], onDelete: Cascade)
-  restaurante                   Restaurante @relation(fields: [restID], references: [restID], onDelete: Cascade)
+  funcionario Funcionario @relation(fields: [funcID], references: [funcID], onDelete: Cascade)
+  restaurante Restaurante @relation(fields: [restID], references: [restID], onDelete: Cascade)
 
   @@unique([funcID, restID])
   @@index([funcID])
@@ -119,45 +164,25 @@ model FuncionarioRestaurante {
   @@map("funcionario_restaurante")
 }
 
-model ConfiguracaoGorjetas {
-  configID                      Int      @id @default(autoincrement())
-  restID                        Int
-  funcao                        String   // garcom, cozinha, douglas, etc.
-  tipo_calculo                  String   @default("percentagem") // percentagem, remainder
-  percentagem                   Decimal  @db.Decimal(5, 2) // Used if tipo_calculo = "percentagem"
-  ordem_calculo                 Int      @default(0) // Priority order (lower = calculated first)
-  ativo                         Boolean  @default(true)
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
-
-  // Relations
-  restaurante                   Restaurante @relation(fields: [restID], references: [restID])
-
-  @@unique([restID, funcao]) // Only one active config per (rest, function)
-  @@index([restID])
-  @@index([ordem_calculo])
-  @@map("configuracao_gorjetas")
-}
-
 model Transacao {
-  tranID                        Int      @id @default(autoincrement())
-  total                         Decimal  @db.Decimal(10, 2)
-  valor_gorjeta_calculada       Decimal  @db.Decimal(10, 2)
-  percentagem_aplicada          Decimal  @db.Decimal(5, 2) // Base % used
-  mbway                         Decimal  @db.Decimal(10, 2) @default(0)
-  funcID_garcom                 Int      // Assigned waiter
-  restID                        Int
-  data_transacao                DateTime // Date of transaction (usually today)
-  acerto_periodo_id             Int?     // FK → AcertoPeriodo (NULL until settled)
-  pago                          Boolean  @default(false) // Marked as paid when settlement done
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
+  tranID                  Int      @id @default(autoincrement())
+  total                   Decimal  @db.Decimal(10, 2)
+  valor_gorjeta_calculada Decimal  @db.Decimal(10, 2)
+  percentagem_aplicada    Decimal  @db.Decimal(5, 2) // Base % used
+  mbway                   Decimal  @default(0) @db.Decimal(10, 2)
+  funcID_garcom           Int // Assigned waiter
+  restID                  Int
+  data_transacao          DateTime // Date of transaction (usually today)
+  acerto_periodo_id       Int? // FK → AcertoPeriodo (NULL until settled)
+  pago                    Boolean  @default(false) // Marked as paid when settlement done
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   // Relations
-  garcom                        Funcionario @relation("garcom", fields: [funcID_garcom], references: [funcID])
-  restaurante                   Restaurante @relation(fields: [restID], references: [restID])
-  distribuicoes                 DistribuicaoGorjetas[]
-  acerto_periodo                AcertoPeriodo? @relation(fields: [acerto_periodo_id], references: [id])
+  garcom         Funcionario            @relation("garcom", fields: [funcID_garcom], references: [funcID])
+  restaurante    Restaurante            @relation(fields: [restID], references: [restID])
+  distribuicoes  DistribuicaoGorjetas[]
+  acerto_periodo AcertoPeriodo?         @relation(fields: [acerto_periodo_id], references: [id])
 
   @@index([restID])
   @@index([funcID_garcom])
@@ -167,18 +192,18 @@ model Transacao {
 }
 
 model DistribuicaoGorjetas {
-  distID                        Int      @id @default(autoincrement())
-  tranID                        Int
-  funcID                        Int
-  tipo_distribuicao             String   // garcom, cozinha, douglas, etc.
-  percentagem_aplicada          Decimal  @db.Decimal(5, 2)
-  valor_calculado               Decimal  @db.Decimal(10, 2)
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
+  distID               Int      @id @default(autoincrement())
+  tranID               Int
+  funcID               Int
+  tipo_distribuicao    String // garcom, cozinha, douglas, etc.
+  percentagem_aplicada Decimal  @db.Decimal(5, 2)
+  valor_calculado      Decimal  @db.Decimal(10, 2)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   // Relations
-  transacao                     Transacao @relation(fields: [tranID], references: [tranID], onDelete: Cascade)
-  funcionario                   Funcionario @relation(fields: [funcID], references: [funcID])
+  transacao   Transacao   @relation(fields: [tranID], references: [tranID], onDelete: Cascade)
+  funcionario Funcionario @relation(fields: [funcID], references: [funcID])
 
   @@index([tranID])
   @@index([funcID])
@@ -188,36 +213,36 @@ model DistribuicaoGorjetas {
 // ===== Phase 4 Models (placeholder for future use) =====
 
 model Limpeza {
-  prodID                        Int      @id @default(autoincrement())
-  restID                        Int
-  name                          String
-  quantidade                    Decimal  @db.Decimal(10, 2)
-  unidade                       String   // kg, l, un, etc.
-  preco_unitario                Decimal  @db.Decimal(10, 2)
-  ativo                         Boolean  @default(true)
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
+  prodID         Int      @id @default(autoincrement())
+  restID         Int
+  name           String
+  quantidade     Decimal  @db.Decimal(10, 2)
+  unidade        String // kg, l, un, etc.
+  preco_unitario Decimal  @db.Decimal(10, 2)
+  ativo          Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   // Relations
-  restaurante                   Restaurante @relation(fields: [restID], references: [restID])
-  records                       LimpezaRecord[]
+  restaurante Restaurante     @relation(fields: [restID], references: [restID])
+  records     LimpezaRecord[]
 
   @@index([restID])
   @@map("limpeza")
 }
 
 model LimpezaRecord {
-  recordID                      Int      @id @default(autoincrement())
-  prodID                        Int
-  funcID                        Int
-  quantidade_usada              Decimal  @db.Decimal(10, 2)
-  data                          DateTime @default(now())
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
+  recordID         Int      @id @default(autoincrement())
+  prodID           Int
+  funcID           Int
+  quantidade_usada Decimal  @db.Decimal(10, 2)
+  data             DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   // Relations
-  produto                       Limpeza @relation(fields: [prodID], references: [prodID], onDelete: Cascade)
-  funcionario                   Funcionario @relation(fields: [funcID], references: [funcID])
+  produto     Limpeza     @relation(fields: [prodID], references: [prodID], onDelete: Cascade)
+  funcionario Funcionario @relation(fields: [funcID], references: [funcID])
 
   @@index([prodID])
   @@index([funcID])
@@ -227,19 +252,22 @@ model LimpezaRecord {
 // ===== Financeiro e Acerto Models =====
 
 model FaturamentoDiario {
-  id                            Int      @id @default(autoincrement())
-  restID                        Int
-  data                          DateTime @db.Date // Unique per (restID, data)
-  faturamento_inserido          Decimal  @db.Decimal(12, 2) // Manual by gestor
-  faturamento_calculado         Decimal  @db.Decimal(12, 2) @default(0) // Sum of transactions
-  diferenca_percentual          Decimal  @db.Decimal(5, 2) @default(0) // |(insert-calc)/calc|
-  notas                         String?  // Reason for difference
-  ativo                         Boolean  @default(true) // Soft delete
-  criadoEm                      DateTime @default(now())
-  atualizadoEm                  DateTime @updatedAt
+  id                      Int      @id @default(autoincrement())
+  restID                  Int
+  data                    DateTime @db.Date // Unique per (restID, data)
+  faturamento_inserido    Decimal  @db.Decimal(12, 2) // Manual by gerente
+  faturamento_calculado   Decimal  @default(0) @db.Decimal(12, 2) // Sum of transactions
+  faturamento_com_gorjeta Decimal? @db.Decimal(12, 2) // Revenue that generated tips
+  faturamento_sem_gorjeta Decimal? @db.Decimal(12, 2) // Revenue without tips
+  valor_total_gorjetas    Decimal? @db.Decimal(12, 2) // Actual tip pool
+  diferenca_percentual    Decimal  @default(0) @db.Decimal(5, 2) // |(insert-calc)/calc|
+  notas                   String? // Reason for difference
+  ativo                   Boolean  @default(true) // Soft delete
+  criadoEm                DateTime @default(now())
+  atualizadoEm            DateTime @updatedAt
 
   // Relations
-  restaurante                   Restaurante @relation(fields: [restID], references: [restID], onDelete: Cascade)
+  restaurante Restaurante @relation(fields: [restID], references: [restID], onDelete: Cascade)
 
   @@unique([restID, data])
   @@index([restID])
@@ -248,23 +276,23 @@ model FaturamentoDiario {
 }
 
 model ConfiguracaoAcerto {
-  id                            Int      @id @default(autoincrement())
-  restID                        Int
-  funcao                        String   // "Garçom", "Cozinha", "Chamador", "Supervisor", etc.
-  base_calculo                  String   // ENUM: "GORJETA_TOTAL" | "FATURAMENTO_BASE" | "ABSOLUTO" | "GORJETA_REMAINING" | "FATURAMENTO_EXTRA"
-  valor_percentual              Decimal? @db.Decimal(5, 2) // NULL if ABSOLUTO
-  valor_absoluto                Decimal? @db.Decimal(10, 2) // NULL if PERCENTUAL
+  id               Int      @id @default(autoincrement())
+  restID           Int
+  funcao           String // "Garçom", "Cozinha", "Chamador", "Supervisor", etc.
+  base_calculo     String // ENUM: "GORJETA_TOTAL" | "FATURAMENTO_BASE" | "ABSOLUTO" | "GORJETA_REMAINING" | "FATURAMENTO_EXTRA"
+  valor_percentual Decimal? @db.Decimal(5, 2) // NULL if ABSOLUTO
+  valor_absoluto   Decimal? @db.Decimal(10, 2) // NULL if PERCENTUAL
   // New fields for advanced distribution:
   // - GORJETA_REMAINING: Gets the remaining gorjeta after other functions take their share
   // - FATURAMENTO_EXTRA: Gets % of the non-11% faturamento (89% of total)
-  ordem_calculo                 Int      @default(999) // Processing order (lower = sooner)
-  ativo                         Boolean  @default(true)
-  criadoEm                      DateTime @default(now())
-  atualizadoEm                  DateTime @updatedAt
+  ordem_calculo    Int      @default(999) // Processing order (lower = sooner)
+  ativo            Boolean  @default(true)
+  criadoEm         DateTime @default(now())
+  atualizadoEm     DateTime @updatedAt
 
   // Relations
-  restaurante                   Restaurante @relation(fields: [restID], references: [restID], onDelete: Cascade)
-  acertos_funcionarios          AcertoFuncionario[]
+  restaurante          Restaurante         @relation(fields: [restID], references: [restID], onDelete: Cascade)
+  acertos_funcionarios AcertoFuncionario[]
 
   @@unique([restID, funcao])
   @@index([restID])
@@ -272,20 +300,20 @@ model ConfiguracaoAcerto {
 }
 
 model FaturamentoDiarioDistribuicao {
-  id              Int      @id @default(autoincrement())
-  restID          Int
-  data            DateTime @db.Date
-  funcID          Int?
-  role            String
-  valor_pool      Decimal? @db.Decimal(12, 2)
-  valor_direto    Decimal? @db.Decimal(12, 2)
-  valor_teorico   Decimal? @db.Decimal(12, 2)
-  valor_pago      Decimal  @db.Decimal(12, 2)
-  criadoEm        DateTime @default(now())
-  atualizadoEm    DateTime @updatedAt
+  id            Int      @id @default(autoincrement())
+  restID        Int
+  data          DateTime @db.Date
+  funcID        Int?
+  role          String
+  valor_pool    Decimal? @db.Decimal(12, 2)
+  valor_direto  Decimal? @db.Decimal(12, 2)
+  valor_teorico Decimal? @db.Decimal(12, 2)
+  valor_pago    Decimal  @db.Decimal(12, 2)
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
 
-  restaurante     Restaurante @relation(fields: [restID], references: [restID], onDelete: Cascade)
-  funcionario     Funcionario? @relation(fields: [funcID], references: [funcID])
+  restaurante Restaurante  @relation(fields: [restID], references: [restID], onDelete: Cascade)
+  funcionario Funcionario? @relation(fields: [funcID], references: [funcID])
 
   @@unique([restID, data, funcID, role])
   @@index([restID])
@@ -293,24 +321,42 @@ model FaturamentoDiarioDistribuicao {
   @@map("faturamento_diario_distribuicao")
 }
 
+model FuncionarioPresencaDiaria {
+  id           Int      @id @default(autoincrement())
+  restID       Int
+  data         DateTime @db.Date
+  funcID       Int
+  presente     Boolean  @default(false)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  restaurante Restaurante @relation(fields: [restID], references: [restID], onDelete: Cascade)
+  funcionario Funcionario @relation(fields: [funcID], references: [funcID], onDelete: Cascade)
+
+  @@unique([restID, data, funcID])
+  @@index([restID, data])
+  @@index([funcID])
+  @@map("funcionario_presenca_diaria")
+}
+
 model AcertoPeriodo {
-  id                            Int      @id @default(autoincrement())
-  restID                        Int
-  periodo_inicio                DateTime @db.Date
-  periodo_fim                   DateTime @db.Date
-  tipo_periodo                  String   // ENUM: "DIARIO" | "SEMANAL"
-  faturamento_total            Decimal  @db.Decimal(12, 2) // Snapshot
-  gorjeta_total                 Decimal  @db.Decimal(12, 2) // Snapshot
-  pago                          Boolean  @default(false)
-  data_pagamento                DateTime? // When marked as paid
-  usuario_pagamento_id          Int? // FK → Gestor
-  criadoEm                      DateTime @default(now())
-  atualizadoEm                  DateTime @updatedAt
+  id                   Int       @id @default(autoincrement())
+  restID               Int
+  periodo_inicio       DateTime  @db.Date
+  periodo_fim          DateTime  @db.Date
+  tipo_periodo         String // ENUM: "DIARIO" | "SEMANAL"
+  faturamento_total    Decimal   @db.Decimal(12, 2) // Snapshot
+  gorjeta_total        Decimal   @db.Decimal(12, 2) // Snapshot
+  pago                 Boolean   @default(false)
+  data_pagamento       DateTime? // When marked as paid
+  usuario_pagamento_id Int? // FK → Gerente
+  criadoEm             DateTime  @default(now())
+  atualizadoEm         DateTime  @updatedAt
 
   // Relations
-  restaurante                   Restaurante @relation(fields: [restID], references: [restID], onDelete: Cascade)
-  acertos_funcionarios          AcertoFuncionario[]
-  transacoes                    Transacao[]
+  restaurante          Restaurante         @relation(fields: [restID], references: [restID], onDelete: Cascade)
+  acertos_funcionarios AcertoFuncionario[]
+  transacoes           Transacao[]
 
   @@index([restID])
   @@index([pago])
@@ -319,25 +365,104 @@ model AcertoPeriodo {
 }
 
 model AcertoFuncionario {
-  id                            Int      @id @default(autoincrement())
-  acerto_periodo_id             Int
-  funcID                        Int
-  configuracao_acerto_id        Int      // Link to config (snapshot)
-  funcao                        String   // Function snapshot
-  valor_base                    Decimal  @db.Decimal(12, 2) // Calculation base
-  percentual_aplicado           Decimal? @db.Decimal(5, 2) // % if applicable
-  valor_absoluto_aplicado       Decimal? @db.Decimal(10, 2) // Fixed value if applicable
-  valor_calculado               Decimal  @db.Decimal(12, 2) // Final result
-  pago                          Boolean  @default(false) // Updates with acerto_periodo.pago
-  criadoEm                      DateTime @default(now())
-  atualizadoEm                  DateTime @updatedAt
+  id                      Int      @id @default(autoincrement())
+  acerto_periodo_id       Int
+  funcID                  Int
+  configuracao_acerto_id  Int // Link to config (snapshot)
+  funcao                  String // Function snapshot
+  valor_base              Decimal  @db.Decimal(12, 2) // Calculation base
+  percentual_aplicado     Decimal? @db.Decimal(5, 2) // % if applicable
+  valor_absoluto_aplicado Decimal? @db.Decimal(10, 2) // Fixed value if applicable
+  valor_calculado         Decimal  @db.Decimal(12, 2) // Final result
+  pago                    Boolean  @default(false) // Updates with acerto_periodo.pago
+  criadoEm                DateTime @default(now())
+  atualizadoEm            DateTime @updatedAt
 
   // Relations
-  acerto_periodo                AcertoPeriodo @relation(fields: [acerto_periodo_id], references: [id], onDelete: Cascade)
-  funcionario                   Funcionario @relation(fields: [funcID], references: [funcID], onDelete: Cascade)
-  configuracao_acerto           ConfiguracaoAcerto @relation(fields: [configuracao_acerto_id], references: [id])
+  acerto_periodo      AcertoPeriodo      @relation(fields: [acerto_periodo_id], references: [id], onDelete: Cascade)
+  funcionario         Funcionario        @relation(fields: [funcID], references: [funcID], onDelete: Cascade)
+  configuracao_acerto ConfiguracaoAcerto @relation(fields: [configuracao_acerto_id], references: [id])
 
   @@index([acerto_periodo_id])
   @@index([funcID])
   @@map("acerto_funcionario")
+}
+
+// ===== Fecho Financeiro =====
+
+model FechoFinanceiroTemplate {
+  id           Int      @id @default(autoincrement())
+  restID       Int
+  label        String
+  ordem        Int      @default(0)
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  restaurante Restaurante           @relation(fields: [restID], references: [restID], onDelete: Cascade)
+  itens       FechoFinanceiroItem[]
+
+  @@index([restID])
+  @@map("fecho_financeiro_template")
+}
+
+model FechoFinanceiro {
+  id                   Int      @id @default(autoincrement())
+  restID               Int
+  data                 DateTime @db.Date
+  faturamento_global   Decimal  @default(0) @db.Decimal(12, 2)
+  dinheiro_a_depositar Decimal  @default(0) @db.Decimal(12, 2)
+  notas                String?
+  criadoEm             DateTime @default(now())
+  atualizadoEm         DateTime @updatedAt
+
+  restaurante Restaurante           @relation(fields: [restID], references: [restID], onDelete: Cascade)
+  itens       FechoFinanceiroItem[]
+
+  @@unique([restID, data])
+  @@index([restID])
+  @@index([data])
+  @@map("fecho_financeiro")
+}
+
+model FechoFinanceiroItem {
+  id           Int      @id @default(autoincrement())
+  fecID        Int
+  templateId   Int?
+  label        String
+  valor        Decimal  @default(0) @db.Decimal(12, 2)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  fecho    FechoFinanceiro          @relation(fields: [fecID], references: [id], onDelete: Cascade)
+  template FechoFinanceiroTemplate? @relation(fields: [templateId], references: [id])
+
+  @@index([fecID])
+  @@map("fecho_financeiro_item")
+}
+
+// ===== Regras de Distribuição (New Model) =====
+
+model RegraDistribuicao {
+  id               Int               @id @default(autoincrement())
+  restID           Int
+  role_name        String // e.g., "staff", "cozinha", "gerente"
+  calculation_type CalculationType
+  calculation_base CalculationBase? // Required when calculation_type = PERCENT
+  rate             Decimal           @db.Decimal(12, 4) // % if PERCENT, currency if FIXED_AMOUNT
+  percent_mode     PercentMode       @default(ABSOLUTE_PERCENT)
+  split_mode       EmployeeSplitMode @default(EQUAL_SPLIT)
+  tipo_de_acerto   SettlementType    @default(DIARIO)
+  payment_source   PaymentSource
+  ordem            Int               @default(0) // Processing order (lower = first)
+  ativo            Boolean           @default(true)
+  criadoEm         DateTime          @default(now())
+  atualizadoEm     DateTime          @updatedAt
+
+  // Relations
+  restaurante Restaurante @relation(fields: [restID], references: [restID], onDelete: Cascade)
+
+  @@index([restID])
+  @@index([restID, ativo])
+  @@map("regras_distribuicao")
 }

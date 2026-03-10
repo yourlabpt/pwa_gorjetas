@@ -3,6 +3,22 @@ set -e
 
 BACKEND_PORT="${PORT:-3001}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+MIGRATE_ON_START="${MIGRATE_ON_START:-true}"
+MIGRATE_STRICT="${MIGRATE_STRICT:-false}"
+
+# Apply any pending database migrations before starting services
+if [ "$MIGRATE_ON_START" = "true" ]; then
+  echo "Running database migrations..."
+  if (cd /app/backend && npx prisma migrate deploy); then
+    echo "Migrations complete."
+  else
+    if [ "$MIGRATE_STRICT" = "true" ]; then
+      echo "Migration failed and MIGRATE_STRICT=true, exiting."
+      exit 1
+    fi
+    echo "Migration failed, but continuing startup (MIGRATE_STRICT=false)."
+  fi
+fi
 
 PORT="$BACKEND_PORT" node /app/backend/dist/main.js &
 BACK_PID=$!

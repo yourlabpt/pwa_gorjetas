@@ -37,3 +37,4 @@ export class FaturamentoDiarioResponseDto {
 }
 
 export * from './save-snapshot.dto';
+export * from './compute-payouts.dto';

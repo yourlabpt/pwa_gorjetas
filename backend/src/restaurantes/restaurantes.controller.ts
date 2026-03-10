@@ -3,7 +3,7 @@ import { RestaurantesService } from './restaurantes.service';
 import { CreateRestauranteDto, UpdateRestauranteDto } from './dto/restaurante.dto';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { assertRestaurantAccess, getAllowedRestaurantes } from '../auth/restaurant-access.util';
-import { UserRole } from '@prisma/client';
+import { isAdminLike, canManageRestaurants } from '../auth/role.util';
 
 @Controller('restaurantes')
 export class RestaurantesController {
@@ -11,8 +11,10 @@ export class RestaurantesController {
 
   @Post()
   create(@Body() data: CreateRestauranteDto, @CurrentUser() user: any) {
-    if (user?.role !== UserRole.ADMIN && user?.role !== UserRole.SUPERVISOR) {
-      throw new ForbiddenException('Apenas supervisor ou admin podem criar restaurante');
+    if (!canManageRestaurants(user?.role)) {
+      throw new ForbiddenException(
+        'Apenas supervisor, admin ou super admin podem criar restaurante',
+      );
     }
     return this.restaurantesService.create(data);
   }
@@ -32,8 +34,10 @@ export class RestaurantesController {
 
   @Put(':id')
   update(@Param('id') id: string, @Body() data: UpdateRestauranteDto, @CurrentUser() user: any) {
-    if (user?.role !== UserRole.ADMIN && user?.role !== UserRole.SUPERVISOR) {
-      throw new ForbiddenException('Apenas supervisor ou admin podem editar restaurante');
+    if (!canManageRestaurants(user?.role)) {
+      throw new ForbiddenException(
+        'Apenas supervisor, admin ou super admin podem editar restaurante',
+      );
     }
     assertRestaurantAccess(user, Number(id));
     return this.restaurantesService.update(Number(id), data);
@@ -41,8 +45,10 @@ export class RestaurantesController {
 
   @Put(':id/toggle-active')
   toggleActive(@Param('id') id: string, @CurrentUser() user: any) {
-    if (user?.role !== UserRole.ADMIN && user?.role !== UserRole.SUPERVISOR) {
-      throw new ForbiddenException('Apenas supervisor ou admin podem editar restaurante');
+    if (!canManageRestaurants(user?.role)) {
+      throw new ForbiddenException(
+        'Apenas supervisor, admin ou super admin podem editar restaurante',
+      );
     }
     assertRestaurantAccess(user, Number(id));
     return this.restaurantesService.toggleActive(Number(id));
@@ -50,8 +56,10 @@ export class RestaurantesController {
 
   @Delete(':id')
   delete(@Param('id') id: string, @CurrentUser() user: any) {
-    if (user?.role !== UserRole.ADMIN) {
-      throw new ForbiddenException('Apenas admin pode deletar restaurante');
+    if (!isAdminLike(user?.role)) {
+      throw new ForbiddenException(
+        'Apenas admin ou super admin pode deletar restaurante',
+      );
     }
     assertRestaurantAccess(user, Number(id));
     return this.restaurantesService.delete(Number(id));

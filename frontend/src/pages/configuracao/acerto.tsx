@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
+import Layout from '../../components/Layout';
 import { apiClient } from '../../lib/api';
-import styles from '../../styles/configuracao-acerto.module.css';
+import styles from '../../styles/financeiro-diario.module.css';
+import { useSessionPageState } from '../../hooks/useSessionPageState';
 
 interface ConfiguracaoAcerto {
   id: number;
@@ -17,16 +20,36 @@ interface Restaurante {
   name: string;
 }
 
+const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'GERENTE'];
+
+const baseCalculoLabel: Record<string, string> = {
+  GORJETA_TOTAL: 'Percentual das gorjetas totais',
+  FATURAMENTO_BASE: 'Percentual do faturamento base (11%)',
+  ABSOLUTO: 'Valor fixo (R$)',
+};
+
+const normalizeError = (err: any, fallback: string) => {
+  const message = err?.response?.data?.message;
+  if (Array.isArray(message)) return message.join(', ');
+  return message || fallback;
+};
+
 export default function ConfiguracaoAcertoPage() {
+  const router = useRouter();
+  const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [restaurantes, setRestaurantes] = useState<Restaurante[]>([]);
-  const [selectedRestID, setSelectedRestID] = useState<number | null>(null);
+  const [selectedRestID, setSelectedRestID] = useSessionPageState<number | null>(
+    'acerto_selected_restID',
+    null,
+  );
   const [configuracoes, setConfiguracoes] = useState<ConfiguracaoAcerto[]>([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  // Form state
   const [formData, setFormData] = useState({
     funcao: '',
     base_calculo: 'GORJETA_TOTAL',
@@ -34,130 +57,65 @@ export default function ConfiguracaoAcertoPage() {
     valor_absoluto: '',
   });
 
-  // Carregar restaurantes
   useEffect(() => {
-    const loadRestaurantes = async () => {
+    const checkAuth = async () => {
       try {
-        const res = await apiClient.getRestaurantes(true);
-        setRestaurantes(res.data);
-        if (res.data.length > 0) {
-          setSelectedRestID(res.data[0].restID);
+        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+        if (!token) {
+          router.replace('/login');
+          return;
         }
-      } catch (err) {
-        console.error('Erro ao carregar restaurantes:', err);
+
+        const meRes = await apiClient.me();
+        const role: string = meRes.data?.role || '';
+        if (!ALLOWED_ROLES.includes(role)) {
+          router.replace('/');
+          return;
+        }
+
+        setAuthorized(true);
+
+        const restRes = await apiClient.getRestaurantes(true);
+        const rests: Restaurante[] = restRes.data || [];
+        setRestaurantes(rests);
+
+        if (rests.length === 0) {
+          setError('Nenhum restaurante ativo encontrado.');
+          setSelectedRestID(null);
+          return;
+        }
+
+        const hasPersisted =
+          selectedRestID != null && rests.some((rest) => rest.restID === selectedRestID);
+
+        setSelectedRestID(hasPersisted ? selectedRestID : rests[0].restID);
+      } catch {
+        router.replace('/login');
       }
     };
-    loadRestaurantes();
+
+    checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Carregar configurações quando restaurante mudar
   useEffect(() => {
     if (selectedRestID) {
-      loadConfiguracoes();
+      loadConfiguracoes(selectedRestID);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRestID]);
 
-  const loadConfiguracoes = async () => {
+  const loadConfiguracoes = async (restID: number) => {
     try {
       setLoading(true);
-      const res = await apiClient.getConfiguracaoAcerto(selectedRestID!);
-      setConfiguracoes(res.data);
       setError('');
-    } catch (err) {
-      setError('Erro ao carregar configurações');
+      const res = await apiClient.getConfiguracaoAcerto(restID);
+      setConfiguracoes(res.data || []);
+    } catch (err: any) {
+      setError(normalizeError(err, 'Erro ao carregar configurações.'));
       setConfiguracoes([]);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleFormChange = (
-    field: keyof typeof formData,
-    value: string
-  ) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-  const handleBaseCalculoChange = (value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      base_calculo: value,
-      valor_percentual: value === 'ABSOLUTO' ? '' : prev.valor_percentual,
-      valor_absoluto: value === 'ABSOLUTO' ? prev.valor_absoluto : '',
-    }));
-  };
-
-  const handleSaveConfiguracao = async () => {
-    if (!formData.funcao.trim()) {
-      setError('Nome da função é obrigatório');
-      return;
-    }
-
-    if (formData.base_calculo !== 'ABSOLUTO' && !formData.valor_percentual) {
-      setError('Valor percentual é obrigatório');
-      return;
-    }
-
-    if (formData.base_calculo === 'ABSOLUTO' && !formData.valor_absoluto) {
-      setError('Valor absoluto é obrigatório');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const data = {
-        funcao: formData.funcao,
-        base_calculo: formData.base_calculo,
-        valor_percentual:
-          formData.base_calculo !== 'ABSOLUTO'
-            ? parseFloat(formData.valor_percentual)
-            : null,
-        valor_absoluto:
-          formData.base_calculo === 'ABSOLUTO'
-            ? parseFloat(formData.valor_absoluto)
-            : null,
-      };
-
-      if (editingId) {
-        await apiClient.updateConfiguracaoAcerto(editingId, data);
-      } else {
-        await apiClient.createConfiguracaoAcerto(selectedRestID!, data);
-      }
-
-      await loadConfiguracoes();
-      resetForm();
-      setError('');
-    } catch (err: any) {
-      setError(
-        err.response?.data?.message || 'Erro ao salvar configuração'
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEdit = (config: ConfiguracaoAcerto) => {
-    setFormData({
-      funcao: config.funcao,
-      base_calculo: config.base_calculo,
-      valor_percentual: config.valor_percentual?.toString() || '',
-      valor_absoluto: config.valor_absoluto?.toString() || '',
-    });
-    setEditingId(config.id);
-    setShowForm(true);
-  };
-
-  const handleDelete = async (id: number) => {
-    if (confirm('Tem certeza que deseja deletar esta configuração?')) {
-      try {
-        await apiClient.deleteConfiguracaoAcerto(id);
-        await loadConfiguracoes();
-      } catch (err) {
-        setError('Erro ao deletar configuração');
-      }
     }
   };
 
@@ -172,161 +130,301 @@ export default function ConfiguracaoAcertoPage() {
     setShowForm(false);
   };
 
+  const handleFormChange = (field: keyof typeof formData, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleBaseCalculoChange = (value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      base_calculo: value,
+      valor_percentual: value === 'ABSOLUTO' ? '' : prev.valor_percentual,
+      valor_absoluto: value === 'ABSOLUTO' ? prev.valor_absoluto : '',
+    }));
+  };
+
+  const handleSaveConfiguracao = async () => {
+    if (!selectedRestID) {
+      setError('Selecione um restaurante para continuar.');
+      return;
+    }
+
+    if (!formData.funcao.trim()) {
+      setError('Nome da função é obrigatório.');
+      return;
+    }
+
+    if (formData.base_calculo !== 'ABSOLUTO' && !formData.valor_percentual) {
+      setError('Valor percentual é obrigatório.');
+      return;
+    }
+
+    if (formData.base_calculo === 'ABSOLUTO' && !formData.valor_absoluto) {
+      setError('Valor fixo é obrigatório.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError('');
+      setSuccess('');
+
+      const data = {
+        funcao: formData.funcao.trim(),
+        base_calculo: formData.base_calculo,
+        valor_percentual:
+          formData.base_calculo !== 'ABSOLUTO' ? Number(formData.valor_percentual) : null,
+        valor_absoluto: formData.base_calculo === 'ABSOLUTO' ? Number(formData.valor_absoluto) : null,
+      };
+
+      if (editingId) {
+        await apiClient.updateConfiguracaoAcerto(editingId, data);
+        setSuccess('Configuração atualizada.');
+      } else {
+        await apiClient.createConfiguracaoAcerto(selectedRestID, data);
+        setSuccess('Configuração criada.');
+      }
+
+      await loadConfiguracoes(selectedRestID);
+      resetForm();
+    } catch (err: any) {
+      setError(normalizeError(err, 'Erro ao salvar configuração.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEdit = (config: ConfiguracaoAcerto) => {
+    setFormData({
+      funcao: config.funcao,
+      base_calculo: config.base_calculo,
+      valor_percentual: config.valor_percentual?.toString() || '',
+      valor_absoluto: config.valor_absoluto?.toString() || '',
+    });
+    setEditingId(config.id);
+    setShowForm(true);
+    setError('');
+    setSuccess('');
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Tem certeza que deseja apagar esta configuração?')) return;
+
+    try {
+      setError('');
+      setSuccess('');
+      await apiClient.deleteConfiguracaoAcerto(id);
+      if (selectedRestID) {
+        await loadConfiguracoes(selectedRestID);
+      }
+      setSuccess('Configuração apagada.');
+      if (editingId === id) {
+        resetForm();
+      }
+    } catch (err: any) {
+      setError(normalizeError(err, 'Erro ao apagar configuração.'));
+    }
+  };
+
+  const resumo = useMemo(() => {
+    const totais = {
+      total: configuracoes.length,
+      percentual: configuracoes.filter((c) => c.base_calculo !== 'ABSOLUTO').length,
+      fixo: configuracoes.filter((c) => c.base_calculo === 'ABSOLUTO').length,
+    };
+    return totais;
+  }, [configuracoes]);
+
+  if (authorized === null) {
+    return (
+      <Layout>
+        <div className={styles.container}>
+          <p className={styles.muted}>Verificando permissões...</p>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
-    <div className={styles.container}>
-      <div className={styles.header}>
-        <h1>Configuração de Acerto e Distribuição</h1>
-      </div>
+    <Layout>
+      <div className={styles.container}>
+        <div className={styles.pageHeader}>
+          <div>
+            <p className={styles.kicker}>Configuração</p>
+            <h1>Acerto</h1>
+            <p className={styles.subtitle}>
+              Configure regras por função para calcular acertos com base em percentual ou valor fixo.
+            </p>
+          </div>
+          <div className={styles.filters}>
+            <button
+              type="button"
+              className={styles.btnSuccess}
+              onClick={() => {
+                setShowForm(true);
+                setEditingId(null);
+                setFormData({
+                  funcao: '',
+                  base_calculo: 'GORJETA_TOTAL',
+                  valor_percentual: '',
+                  valor_absoluto: '',
+                });
+              }}
+              disabled={!selectedRestID}
+            >
+              + Nova configuração
+            </button>
+          </div>
+        </div>
 
-      <div className={styles.restauranteSelector}>
-        <label>Selecione o Restaurante:</label>
-        <select
-          value={selectedRestID || ''}
-          onChange={(e) => setSelectedRestID(parseInt(e.target.value))}
-        >
-          {restaurantes.map((r) => (
-            <option key={r.restID} value={r.restID}>
-              {r.name}
-            </option>
-          ))}
-        </select>
-      </div>
+        {error && <div className={styles.error}>{error}</div>}
+        {success && <div className={styles.info}>{success}</div>}
 
-      {error && <div className={styles.error}>{error}</div>}
-
-      <div className={styles.mainContent}>
-        <section className={styles.configSection}>
+        <div className={styles.section}>
           <div className={styles.sectionHeader}>
-            <h2>Distribuição de Gorjetas e Faturamento</h2>
-            {!showForm && (
-              <button
-                className={styles.btnPrimary}
-                onClick={() => setShowForm(true)}
+            <div>
+              <h2 style={{ margin: 0 }}>Restaurante</h2>
+              <p className={styles.metaText}>Selecione onde deseja gerir as regras.</p>
+            </div>
+            <div className={styles.selectGroup}>
+              <label>Restaurante</label>
+              <select
+                value={selectedRestID || ''}
+                onChange={(e) => setSelectedRestID(Number(e.target.value) || null)}
               >
-                + Adicionar Função
-              </button>
-            )}
+                {restaurantes.map((rest) => (
+                  <option key={rest.restID} value={rest.restID}>
+                    {rest.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          {showForm && (
-            <div className={styles.formCard}>
-              <h3>{editingId ? 'Editar' : 'Adicionar'} Função</h3>
+          <div className={styles.summaryGridSmall}>
+            <div className={styles.summaryCard}>
+              <span className={styles.summaryLabel}>Regras totais</span>
+              <span className={styles.summaryValue}>{resumo.total}</span>
+            </div>
+            <div className={styles.summaryCard}>
+              <span className={styles.summaryLabel}>Regras percentuais</span>
+              <span className={styles.summaryValue}>{resumo.percentual}</span>
+            </div>
+            <div className={styles.summaryCard}>
+              <span className={styles.summaryLabel}>Regras fixas</span>
+              <span className={styles.summaryValue}>{resumo.fixo}</span>
+            </div>
+          </div>
+        </div>
 
-              <div className={styles.formGroup}>
-                <label>Nome da Função:</label>
+        {showForm && (
+          <div className={styles.section}>
+            <div className={styles.sectionHeader}>
+              <div>
+                <h2 style={{ margin: 0 }}>{editingId ? 'Editar configuração' : 'Nova configuração'}</h2>
+                <p className={styles.metaText}>Defina a função e a base de cálculo.</p>
+              </div>
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                onClick={resetForm}
+                disabled={saving}
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className={styles.inputRow}>
+              <div className={styles.inputGroup}>
+                <label>Função</label>
                 <input
                   type="text"
                   value={formData.funcao}
-                  onChange={(e) =>
-                    handleFormChange('funcao', e.target.value)
-                  }
-                  placeholder="ex: Garçom, Cozinha, Chamador"
+                  onChange={(e) => handleFormChange('funcao', e.target.value)}
+                  placeholder="Ex: Garçom, Cozinha, Chamador"
                 />
               </div>
 
-              <div className={styles.formGroup}>
-                <label>Base de Cálculo:</label>
+              <div className={styles.selectGroup}>
+                <label>Base de cálculo</label>
                 <select
                   value={formData.base_calculo}
-                  onChange={(e) =>
-                    handleBaseCalculoChange(e.target.value)
-                  }
+                  onChange={(e) => handleBaseCalculoChange(e.target.value)}
                 >
-                  <option value="GORJETA_TOTAL">
-                    Percentual das Gorjetas Totais
-                  </option>
-                  <option value="FATURAMENTO_BASE">
-                    Percentual do Faturamento Base (11%)
-                  </option>
-                  <option value="ABSOLUTO">Valor Fixo (R$)</option>
+                  <option value="GORJETA_TOTAL">{baseCalculoLabel.GORJETA_TOTAL}</option>
+                  <option value="FATURAMENTO_BASE">{baseCalculoLabel.FATURAMENTO_BASE}</option>
+                  <option value="ABSOLUTO">{baseCalculoLabel.ABSOLUTO}</option>
                 </select>
               </div>
 
-              {formData.base_calculo !== 'ABSOLUTO' && (
-                <div className={styles.formGroup}>
-                  <label>Percentual (%):</label>
+              {formData.base_calculo === 'ABSOLUTO' ? (
+                <div className={styles.inputGroup}>
+                  <label>Valor fixo (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.valor_absoluto}
+                    onChange={(e) => handleFormChange('valor_absoluto', e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+              ) : (
+                <div className={styles.inputGroup}>
+                  <label>Percentual (%)</label>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
                     max="100"
                     value={formData.valor_percentual}
-                    onChange={(e) =>
-                      handleFormChange('valor_percentual', e.target.value)
-                    }
+                    onChange={(e) => handleFormChange('valor_percentual', e.target.value)}
                     placeholder="0.00"
                   />
                 </div>
               )}
-
-              {formData.base_calculo === 'ABSOLUTO' && (
-                <div className={styles.formGroup}>
-                  <label>Valor (R$):</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={formData.valor_absoluto}
-                    onChange={(e) =>
-                      handleFormChange('valor_absoluto', e.target.value)
-                    }
-                    placeholder="0.00"
-                  />
-                </div>
-              )}
-
-              <div className={styles.formInfo}>
-                <p>
-                  <strong>Como funciona:</strong>
-                </p>
-                <ul>
-                  <li>
-                    <strong>Gorjeta Total:</strong> Recebe o % da soma de todas
-                    as gorjetas do período
-                  </li>
-                  <li>
-                    <strong>Faturamento Base:</strong> Recebe o % de 11% do
-                    faturamento total
-                  </li>
-                  <li>
-                    <strong>Valor Fixo:</strong> Recebe sempre o mesmo valor
-                    (ex: R$ 50/dia)
-                  </li>
-                </ul>
-              </div>
-
-              <div className={styles.formActions}>
-                <button
-                  className={styles.btnPrimary}
-                  onClick={handleSaveConfiguracao}
-                  disabled={loading}
-                >
-                  {loading
-                    ? 'Salvando...'
-                    : editingId
-                    ? 'Atualizar'
-                    : 'Salvar'}
-                </button>
-                <button
-                  className={styles.btnSecondary}
-                  onClick={resetForm}
-                  disabled={loading}
-                >
-                  Cancelar
-                </button>
-              </div>
             </div>
-          )}
 
-          <div className={styles.tableContainer}>
-            {loading && !showForm ? (
-              <div className={styles.loading}>Carregando...</div>
-            ) : configuracoes.length > 0 ? (
+            <div className={styles.filters}>
+              <button
+                type="button"
+                className={styles.btnPrimary}
+                onClick={handleSaveConfiguracao}
+                disabled={saving}
+              >
+                {saving ? 'Salvando...' : editingId ? 'Atualizar' : 'Salvar'}
+              </button>
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                onClick={resetForm}
+                disabled={saving}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <div>
+              <h2 style={{ margin: 0 }}>Configurações cadastradas</h2>
+              <p className={styles.metaText}>Regras ativas de acerto por função.</p>
+            </div>
+          </div>
+
+          {loading ? (
+            <p className={styles.muted}>Carregando...</p>
+          ) : configuracoes.length === 0 ? (
+            <p className={styles.muted}>Nenhuma configuração cadastrada.</p>
+          ) : (
+            <div className={styles.tableWrapper}>
               <table className={styles.table}>
                 <thead>
                   <tr>
                     <th>Função</th>
-                    <th>Base de Cálculo</th>
+                    <th>Base de cálculo</th>
                     <th>Valor</th>
                     <th>Ações</th>
                   </tr>
@@ -334,93 +432,39 @@ export default function ConfiguracaoAcertoPage() {
                 <tbody>
                   {configuracoes.map((config) => (
                     <tr key={config.id}>
-                      <td className={styles.funcao}>{config.funcao}</td>
-                      <td>{config.base_calculo.replace(/_/g, ' ')}</td>
+                      <td className={styles.name}>{config.funcao}</td>
+                      <td>{baseCalculoLabel[config.base_calculo] || config.base_calculo}</td>
                       <td>
                         {config.base_calculo === 'ABSOLUTO'
-                          ? `R$ ${config.valor_absoluto?.toFixed(2)}`
-                          : `${config.valor_percentual?.toFixed(2)}%`}
+                          ? `R$ ${Number(config.valor_absoluto || 0).toFixed(2)}`
+                          : `${Number(config.valor_percentual || 0).toFixed(2)}%`}
                       </td>
-                      <td className={styles.actions}>
-                        <button
-                          className={styles.btnEdit}
-                          onClick={() => handleEdit(config)}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          className={styles.btnDelete}
-                          onClick={() => handleDelete(config.id)}
-                        >
-                          Deletar
-                        </button>
+                      <td>
+                        <div className={styles.filters}>
+                          <button
+                            type="button"
+                            className={styles.btnInfo}
+                            onClick={() => handleEdit(config)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.btnDanger}
+                            onClick={() => handleDelete(config.id)}
+                          >
+                            Apagar
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            ) : (
-              <div className={styles.noData}>
-                Nenhuma configuração criada. Clique em "Adicionar Função" para
-                começar.
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section className={styles.infoSection}>
-          <h2>Exemplo de Cálculo</h2>
-          <div className={styles.example}>
-            <h3>Cenário</h3>
-            <ul>
-              <li>Faturamento Total: R$ 5.000,00</li>
-              <li>Gorjetas Totais: R$ 300,00</li>
-              <li>Faturamento Base (11%): R$ 550,00</li>
-            </ul>
-
-            <h3>Com as configurações abaixo:</h3>
-            <table className={styles.exampleTable}>
-              <thead>
-                <tr>
-                  <th>Função</th>
-                  <th>Base</th>
-                  <th>Valor</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Garçom</td>
-                  <td>Gorjeta Total</td>
-                  <td>80%</td>
-                </tr>
-                <tr>
-                  <td>Cozinha</td>
-                  <td>Faturamento Base</td>
-                  <td>50%</td>
-                </tr>
-                <tr>
-                  <td>Chamador</td>
-                  <td>Valor Fixo</td>
-                  <td>R$ 50,00</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <h3>Resultado:</h3>
-            <ul>
-              <li>
-                <strong>Garçom:</strong> R$ 300,00 × 80% = <strong>R$ 240,00</strong>
-              </li>
-              <li>
-                <strong>Cozinha:</strong> R$ 550,00 × 50% = <strong>R$ 275,00</strong>
-              </li>
-              <li>
-                <strong>Chamador:</strong> <strong>R$ 50,00</strong> (fixo)
-              </li>
-            </ul>
-          </div>
-        </section>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </Layout>
   );
 }

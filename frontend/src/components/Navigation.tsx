@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import styles from './Navigation.module.css';
 import { apiClient } from '../lib/api';
+import { clearSessionPageState } from '../hooks/useSessionPageState';
 
 export default function Navigation() {
   const [isOpen, setIsOpen] = useState(false);
@@ -34,8 +35,28 @@ export default function Navigation() {
     bootstrapUser();
   }, []);
 
+  useEffect(() => {
+    setIsOpen(false);
+  }, [router.asPath]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const previousOverflow = document.body.style.overflow;
+
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = previousOverflow || '';
+    }
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
   const handleLogout = () => {
     apiClient.setAuthToken(null);
+    clearSessionPageState();
     setUserEmail(null);
     setUserRole(null);
     router.push('/login');
@@ -43,6 +64,16 @@ export default function Navigation() {
 
   const userInitial = (userEmail || '?').slice(0, 1).toUpperCase();
   const isLoggedIn = Boolean(userEmail);
+  const userRoleLabel =
+    userRole === 'GERENTE'
+      ? 'Gerente'
+      : userRole === 'SUPERVISOR'
+      ? 'Supervisor'
+      : userRole === 'ADMIN'
+      ? 'Administrador'
+      : userRole === 'SUPER_ADMIN'
+      ? 'Super Administrador'
+      : userRole;
 
   return (
     <nav className={styles.navbar}>
@@ -73,11 +104,16 @@ export default function Navigation() {
             </Link>
           </li>
           <li>
+            <Link href="/acerto-final" className={styles.navLink} onClick={closeMenu}>
+              Acerto Final
+            </Link>
+          </li>
+          <li>
             <Link href="/funcionarios" className={styles.navLink} onClick={closeMenu}>
               Funcionários
             </Link>
           </li>
-          {userRole !== 'GESTOR' && (
+          {userRole !== 'GERENTE' && (
             <li>
               <Link href="/restaurantes" className={styles.navLink} onClick={closeMenu}>
                 Restaurantes
@@ -94,7 +130,7 @@ export default function Navigation() {
               Configuração
             </Link>
           </li>
-          {userRole === 'ADMIN' && (
+          {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && (
             <li>
               <Link href="/usuarios" className={styles.navLink} onClick={closeMenu}>
                 Usuários
@@ -115,7 +151,7 @@ export default function Navigation() {
               {isLoggedIn ? userEmail : 'Visitante'}
             </span>
             <span className={styles.accountMeta}>
-              {isLoggedIn ? (userRole || 'Conta') : 'Clique para entrar'}
+              {isLoggedIn ? (userRoleLabel || 'Conta') : 'Clique para entrar'}
             </span>
           </div>
           {isLoggedIn ? (

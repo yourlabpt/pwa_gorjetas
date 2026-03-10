@@ -138,7 +138,7 @@ export class AcertoPeridoService {
         break;
 
       case 'FATURAMENTO_EXTRA':
-        // Supervisor/Gestor gets % from the 89% of faturamento (non-11% part)
+        // Supervisor/Gerente gets % from the 89% of faturamento (non-11% part)
         const faturamentoTotal = baseFaturamento.dividedBy(0.11); // Back-calculate total
         const faturamentoExtra = faturamentoTotal.times(0.89); // 89% of total
         valorBase = faturamentoExtra;

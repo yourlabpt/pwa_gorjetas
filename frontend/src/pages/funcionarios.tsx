@@ -1,15 +1,20 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { apiClient } from '../lib/api';
 import styles from '../styles/financeiro-diario.module.css';
+import { useSessionPageState } from '../hooks/useSessionPageState';
 
 interface Funcionario {
   funcID: number;
   name: string;
   contacto: string;
   funcao: string;
+  data_admissao?: string | null;
+  iban?: string | null;
+  salario?: number | null;
   ativo: boolean;
   restID: number;
 }
@@ -24,9 +29,13 @@ const DEFAULT_FUNCOES = ['staff', 'garcom', 'cozinha', 'supervisor', 'chamador']
 const defaultFuncao = (options: string[] = DEFAULT_FUNCOES) =>
   options.length > 0 ? options[0] : 'staff';
 
+const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'GERENTE'];
+
 export default function Funcionarios() {
+  const router = useRouter();
+  const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [restaurantes, setRestaurantes] = useState<Restaurante[]>([]);
-  const [restID, setRestID] = useState<number | null>(null);
+  const [restID, setRestID] = useSessionPageState<number | null>('restID', null);
   const [funcoesDisponiveis, setFuncoesDisponiveis] = useState<string[]>(DEFAULT_FUNCOES);
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +45,9 @@ export default function Funcionarios() {
     name: '',
     contacto: '',
     funcao: defaultFuncao(),
+    data_admissao: '',
+    iban: '',
+    salario: '',
     restID: '',
     restIDs: [] as string[],
   });
@@ -46,9 +58,45 @@ export default function Funcionarios() {
     if (role === 'garcom' || role === 'staff') return 'Staff';
     return funcao || '-';
   };
+  const formatDate = (value?: string | null) => {
+    if (!value) return '-';
+    const [year, month, day] = value.split('T')[0].split('-');
+    if (!year || !month || !day) return '-';
+    return `${day}/${month}/${year}`;
+  };
+  const buildFuncionarioPayload = () => ({
+    name: formData.name.trim(),
+    contacto: formData.contacto.trim() || undefined,
+    funcao: formData.funcao,
+    data_admissao: formData.data_admissao || undefined,
+    iban: formData.iban.trim() || undefined,
+    salario:
+      formData.salario.trim() === '' ? undefined : Number(formData.salario),
+  });
+  const getMissingEmployeeData = (func: Funcionario) => {
+    const missing: string[] = [];
+    if (!func.data_admissao) missing.push('Data de Admissão');
+    if (!func.iban) missing.push('IBAN');
+    if (func.salario == null) missing.push('Salário');
+    return missing;
+  };
 
   useEffect(() => {
-    loadRestaurant();
+    const checkAuth = async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+        if (!token) { router.replace('/login'); return; }
+        const res = await apiClient.me();
+        const role: string = res.data?.role || '';
+        if (!ALLOWED_ROLES.includes(role)) { router.replace('/'); return; }
+        setAuthorized(true);
+        loadRestaurant();
+      } catch {
+        router.replace('/login');
+      }
+    };
+    checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -63,8 +111,12 @@ export default function Funcionarios() {
       const response = await apiClient.getRestaurantes(true);
       if (response.data && response.data.length > 0) {
         setRestaurantes(response.data);
-        setRestID(response.data[0].restID);
-        setFormData(prev => ({ ...prev, restID: response.data[0].restID.toString() }));
+        const hasPersistedRestaurant =
+          restID != null &&
+          response.data.some((rest: Restaurante) => rest.restID === restID);
+        const nextRestID = hasPersistedRestaurant ? restID : response.data[0].restID;
+        setRestID(nextRestID);
+        setFormData((prev) => ({ ...prev, restID: nextRestID.toString() }));
       } else {
         setError('Nenhum restaurante ativo encontrado. Crie um restaurante primeiro.');
       }
@@ -91,12 +143,14 @@ export default function Funcionarios() {
 
   const loadFuncoes = async (restauranteId: number) => {
     try {
-      const response = await apiClient.getConfiguracoes(restauranteId);
-      const fromConfigs = (response.data || [])
-        .map((c: { funcao: string }) => (c.funcao || '').trim())
+      const regrasRes = await apiClient.getRegrasDistribuicao(restauranteId, true);
+      const fromRegras = (regrasRes.data || [])
+        .map((r: { role_name?: string }) => (r.role_name || '').trim())
         .filter(Boolean);
 
-      let merged = Array.from(new Set([...fromConfigs, ...DEFAULT_FUNCOES]));
+      let merged = Array.from(new Set([...fromRegras, ...DEFAULT_FUNCOES])).sort((a, b) =>
+        a.localeCompare(b, 'pt-PT', { sensitivity: 'base' }),
+      );
 
       if (formData.funcao && !merged.includes(formData.funcao)) {
         merged = [...merged, formData.funcao];
@@ -125,6 +179,7 @@ export default function Funcionarios() {
     e.preventDefault();
     setError('');
     try {
+      const payload = buildFuncionarioPayload();
       if (editingId && editingFuncaoName) {
         // EDITING MODE: Update existing funcionario(s)
         if (!formData.name) {
@@ -171,9 +226,7 @@ export default function Funcionarios() {
             );
             if (funcInRest) {
               await apiClient.updateFuncionario(funcInRest.funcID, {
-                name: formData.name,
-                contacto: formData.contacto,
-                funcao: formData.funcao,
+                ...payload,
               });
             }
           } catch (err) {
@@ -185,9 +238,7 @@ export default function Funcionarios() {
         for (const restID of restaurantesToAdd) {
           try {
             await apiClient.createFuncionario({
-              name: formData.name,
-              contacto: formData.contacto,
-              funcao: formData.funcao,
+              ...payload,
               restID: restID,
             });
           } catch (err) {
@@ -227,9 +278,7 @@ export default function Funcionarios() {
         // Create funcionario in all selected restaurants
         for (const restID of selectedRests) {
           await apiClient.createFuncionario({
-            name: formData.name,
-            contacto: formData.contacto,
-            funcao: formData.funcao,
+            ...payload,
             restID: parseInt(restID),
           });
         }
@@ -239,6 +288,9 @@ export default function Funcionarios() {
         name: '',
         contacto: '',
         funcao: defaultFuncao(funcoesDisponiveis),
+        data_admissao: '',
+        iban: '',
+        salario: '',
         restID: restID?.toString() || '',
         restIDs: [],
       });
@@ -283,6 +335,9 @@ export default function Funcionarios() {
         name: func.name,
         contacto: func.contacto || '',
         funcao: func.funcao,
+        data_admissao: func.data_admissao?.split('T')[0] || '',
+        iban: func.iban || '',
+        salario: func.salario != null ? String(func.salario) : '',
         restID: func.restID.toString(),
         restIDs: restaurantesAssignados.length > 0 ? restaurantesAssignados : [func.restID.toString()],
       });
@@ -292,6 +347,9 @@ export default function Funcionarios() {
         name: func.name,
         contacto: func.contacto || '',
         funcao: func.funcao,
+        data_admissao: func.data_admissao?.split('T')[0] || '',
+        iban: func.iban || '',
+        salario: func.salario != null ? String(func.salario) : '',
         restID: func.restID.toString(),
         restIDs: [func.restID.toString()],
       });
@@ -319,10 +377,15 @@ export default function Funcionarios() {
       name: '',
       contacto: '',
       funcao: defaultFuncao(funcoesDisponiveis),
+      data_admissao: '',
+      iban: '',
+      salario: '',
       restID: restID?.toString() || '',
       restIDs: [],
     });
   };
+
+  if (authorized === null) return <Layout><div className={styles.container}><p className={styles.muted}>Verificando permissões…</p></div></Layout>;
 
   return (
     <Layout>
@@ -337,8 +400,9 @@ export default function Funcionarios() {
           </div>
           <div className={styles.filters}>
             <button
+              type="button"
               onClick={() => setShowForm(!showForm)}
-              className="btn btn-success"
+              className={styles.btnSuccess}
             >
               {showForm ? 'Fechar formulário' : '+ Novo Funcionário'}
             </button>
@@ -384,7 +448,7 @@ export default function Funcionarios() {
                 <h2 style={{ margin: 0 }}>{editingId ? 'Editar' : 'Novo'} Funcionário</h2>
                 <p className={styles.metaText}>Selecione restaurantes e defina função.</p>
               </div>
-              <button onClick={handleCancel} className="btn btn-secondary">
+              <button type="button" onClick={handleCancel} className={styles.btnSecondary}>
                 Cancelar
               </button>
             </div>
@@ -488,14 +552,55 @@ export default function Funcionarios() {
                 </div>
               </div>
 
+              <div className={styles.inputRow}>
+                <div className={styles.inputGroup}>
+                  <label>Data de Admissão</label>
+                  <input
+                    type="date"
+                    value={formData.data_admissao}
+                    onChange={(e) =>
+                      setFormData({ ...formData, data_admissao: e.target.value })
+                    }
+                  />
+                </div>
+                <div className={styles.inputGroup}>
+                  <label>IBAN</label>
+                  <input
+                    type="text"
+                    value={formData.iban}
+                    onChange={(e) =>
+                      setFormData({ ...formData, iban: e.target.value })
+                    }
+                    placeholder="PT50 0002 0123 1234 5678 9015 4"
+                  />
+                </div>
+                <div className={styles.inputGroup}>
+                  <label>Salário (€)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.salario}
+                    onChange={(e) =>
+                      setFormData({ ...formData, salario: e.target.value })
+                    }
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              <p className={styles.metaText}>
+                Campos novos podem ficar em branco temporariamente, mas devem ser completados.
+              </p>
+
               <div className={styles.filters}>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className={styles.btnPrimary}>
                   {editingId ? 'Atualizar' : 'Criar'}
                 </button>
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="btn btn-secondary"
+                  className={styles.btnSecondary}
                 >
                   Cancelar
                 </button>
@@ -509,7 +614,7 @@ export default function Funcionarios() {
             <div>
               <h2 style={{ margin: 0 }}>Equipe cadastrada</h2>
               <p className={styles.metaText}>
-                Filtrado pelo restaurante selecionado. Inclui staff, gestores, supervisores e chamadores.
+                Filtrado pelo restaurante selecionado. Inclui staff, gerentes, supervisores e chamadores.
               </p>
             </div>
           </div>
@@ -527,34 +632,61 @@ export default function Funcionarios() {
                     <th>Restaurante</th>
                     <th>Função</th>
                     <th>Contacto</th>
+                    <th>Data de Admissão</th>
+                    <th>IBAN</th>
+                    <th>Salário</th>
+                    <th>Pendências</th>
                     <th>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {funcionarios.map((func) => (
-                    <tr key={func.funcID}>
-                      <td className={styles.name}>{func.name}</td>
-                      <td>{restaurantes.find(r => r.restID === func.restID)?.name || '-'}</td>
-                      <td>{displayFuncao(func.funcao)}</td>
-                      <td>{func.contacto || '-'}</td>
-                      <td>
-                        <div className={styles.filters}>
-                          <button
-                            onClick={() => handleEdit(func)}
-                            className="btn btn-secondary"
-                          >
-                            Editar
-                          </button>
-                          <button
-                            onClick={() => handleDelete(func.funcID)}
-                            className="btn btn-danger"
-                          >
-                            Deletar
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {funcionarios.map((func) => {
+                    const missingData = getMissingEmployeeData(func);
+                    return (
+                      <tr key={func.funcID}>
+                        <td className={styles.name}>{func.name}</td>
+                        <td>{restaurantes.find(r => r.restID === func.restID)?.name || '-'}</td>
+                        <td>{displayFuncao(func.funcao)}</td>
+                        <td>{func.contacto || '-'}</td>
+                        <td>
+                          {formatDate(func.data_admissao)}
+                        </td>
+                        <td>{func.iban || '-'}</td>
+                        <td>
+                          {func.salario != null
+                            ? `€ ${Number(func.salario).toFixed(2)}`
+                            : '-'}
+                        </td>
+                        <td>
+                          {missingData.length > 0 ? (
+                            <span className={styles.negative}>
+                              Completar: {missingData.join(', ')}
+                            </span>
+                          ) : (
+                            <span className={styles.positive}>Completo</span>
+                          )}
+                        </td>
+                        <td>
+                          <div className={styles.filters}>
+                            <button
+                              type="button"
+                              onClick={() => handleEdit(func)}
+                              className={styles.btnInfo}
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(func.funcID)}
+                              className={styles.btnDanger}
+                            >
+                              Deletar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

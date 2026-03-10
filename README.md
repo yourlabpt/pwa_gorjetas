@@ -1,61 +1,98 @@
 # pwa_gorjetas
-App that manages daily finances on restaurants and tips distribution
+Aplicação para gestão de faturamento diário e distribuição de gorjetas.
 
-## Production deployment (Ubuntu, Docker + Caddy)
-
-### Step-by-step (run on the server)
-1) Prereqs: DNS A record for `DOMAIN` → server IP; ports 80/443 open:
-```bash
-sudo ufw allow 80,443/tcp
-```
-2) If you’re not in the docker group, either prefix commands with `sudo` or add yourself and re-login:
-```bash
-sudo usermod -aG docker $USER   # log out/in after this
-```
-3) From the repo root, prepare env (edit values after copying):
+## Deploy em produção (Ubuntu + Docker)
+### 0) Pré-requisitos
+1. Docker e Docker Compose instalados no servidor.
+2. Copiar o arquivo de ambiente:
 ```bash
 cp .env.production.example .env.production
-nano .env.production   # set a real DOMAIN (DNS → server), ACME_EMAIL, POSTGRES_*, JWT_SECRET, CORS_ORIGINS=https://<DOMAIN>
 ```
-4) Build and start the stack (frontend+backend behind Caddy TLS):
+3. Editar `.env.production` com valores reais:
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+nano .env.production
 ```
-5) Run database migrations (optional seed):
+
+Variáveis obrigatórias:
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_DB`
+- `JWT_SECRET`
+- `JWT_EXPIRES_IN`
+- `SUPER_ADMIN_NAME`
+- `SUPER_ADMIN_EMAIL`
+- `SUPER_ADMIN_PASSWORD`
+- `CORS_ORIGINS`
+
+Se usar domínio com Caddy/HTTPS público (sem tunnel), também preencher:
+- `DOMAIN`
+- `ACME_EMAIL`
+
+### 1) Primeiro deploy (sem Cloudflare tunnel)
+Use quando o servidor tem portas 80/443 abertas e domínio apontando para o IP.
+
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml exec app sh -c "cd /app/backend && npx prisma migrate deploy"
-# optional: docker compose --env-file .env.production -f docker-compose.prod.yml exec app sh -c "cd /app/backend && npx prisma db seed"
-```
-6) Verify and follow logs (if `app` is not `Up`, check the app logs and fix env values):
-```bash
+sudo docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 sudo docker compose --env-file .env.production -f docker-compose.prod.yml ps
-sudo docker compose --env-file .env.production -f docker-compose.prod.yml logs -f caddy
 sudo docker compose --env-file .env.production -f docker-compose.prod.yml logs -f app
 ```
-7) Access at `https://<DOMAIN>`; only Caddy on 80/443 is exposed and proxies `/api` to the backend on the private network.
-8) Stop/update:
+
+### 2) Primeiro deploy (com Cloudflare tunnel)
+Use quando não há portas públicas (ex.: CGNAT).
+
+Pré-requisito:
+- Criar um **Named Tunnel** no Cloudflare Zero Trust.
+- Copiar o token do túnel para `.env.production`:
+  - `CLOUDFLARED_TUNNEL_TOKEN=<seu_token>`
+
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml down        # stop
-docker compose --env-file .env.production -f docker-compose.prod.yml pull       # update images
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build  # rebuild & start
+sudo docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.tunnel.yml up -d --build
+sudo docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.tunnel.yml logs -f cloudflared
 ```
 
-### Common TLS gotchas
-- Use a real domain (not `app.example.com`) and point DNS A/AAAA to this server; port 80 must be reachable for HTTP validation.
-- Set `ACME_EMAIL` in `.env.production` so Caddy can register with the CA.
-- If issuance fails, check `docker compose ... logs -f caddy`, fix DNS/email, then re-run `docker compose --env-file .env.production -f docker-compose.prod.yml up -d` to retry.
-- DuckDNS note: update your IP before retrying:
-  `curl "https://www.duckdns.org/update?domains=<your-subdomain>&token=<your-token>&ip=$(curl -s https://api.ipify.org)"`, then verify with `dig +short <your-subdomain>.duckdns.org` matches your public IP.
+Observação:
+- Evite Quick Tunnel (`trycloudflare`) em produção: pode sofrer limite/rate limit (`429/1015`).
+- Com Named Tunnel, o endpoint fica estável e sem rotação automática de URL.
 
-### Simpler, no-public-ports option (Cloudflare Tunnel, free)
-Use this if you are behind CGNAT/can’t open 80/443. Cloudflare handles TLS; we keep Caddy HTTP-only internally and skip ACME.
-1) Install Docker as usual; `cp .env.production.example .env.production` (DOMAIN not used here, but fill DB/JWT).
-2) Start the stack with the tunnel override (build uses relative API path):
+### 3) Deploy de atualização (nova versão do código)
+Sem apagar dados do banco:
+
+Sem tunnel:
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.tunnel.yml up -d --build
+sudo docker compose --env-file .env.production -f docker-compose.prod.yml down
+sudo docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
-3) Start a quick tunnel (prints a public `https://*.trycloudflare.com` URL):
+
+Com tunnel:
 ```bash
-docker compose -f docker-compose.prod.yml -f docker-compose.tunnel.yml run --rm cloudflared
+sudo docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.tunnel.yml down
+sudo docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.tunnel.yml up -d --build
 ```
-Keep this running; the URL serves frontend and `/api` via the tunnel. To stop, Ctrl+C then `docker compose ... down`.
+
+### 4) Senha do banco (importante)
+#### Primeiro uso
+- Defina uma senha forte em `POSTGRES_PASSWORD` antes do primeiro `up`.
+- Essa senha é usada para criar o usuário do Postgres no volume inicial.
+
+#### Ambiente já em produção (volume existente)
+Trocar `POSTGRES_PASSWORD` no `.env.production` sozinho não altera a senha dentro do banco já criado.
+
+Você tem 2 opções:
+1. Preservar dados e alterar a senha dentro do banco:
+```bash
+sudo docker compose --env-file .env.production -f docker-compose.prod.yml exec db psql -U <usuario> -d <database>
+# no prompt do psql:
+ALTER USER <usuario> WITH PASSWORD '<nova_senha>';
+```
+2. Recriar banco do zero (apaga dados):
+```bash
+sudo docker compose --env-file .env.production -f docker-compose.prod.yml down -v
+sudo docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
+
+### 5) SUPER_ADMIN (bootstrap)
+- No startup, a API sincroniza automaticamente o `SUPER_ADMIN` usando:
+  - `SUPER_ADMIN_NAME`
+  - `SUPER_ADMIN_EMAIL`
+  - `SUPER_ADMIN_PASSWORD`
+- Se o usuário já existir, ele é atualizado (nome/email/senha/role).

@@ -1,38 +1,68 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { TipCalculatorService } from '../tip-calculator/tip-calculator.service';
 import { CreateTransacaoDto } from './dto/transacao.dto';
 import { Decimal } from 'decimal.js';
+import { FinanceEngineService } from '../finance-engine/finance-engine.service';
+import { PaymentSource } from '../payout-calculator/payout-calculator.types';
 
 @Injectable()
 export class TransacoesService {
   constructor(
     private prisma: PrismaService,
-    private tipCalculator: TipCalculatorService,
+    private financeEngine: FinanceEngineService,
   ) {}
 
   async create(data: CreateTransacaoDto) {
-    // Validate garçom exists in restaurant
-    await this.tipCalculator.validateGarcom(data.funcID_garcom, data.restID);
+    await this.validateGarcom(data.funcID_garcom, data.restID);
 
-    // Use provided valor_gorjeta_calculada (already calculated on frontend)
     const valorGorjeta = new Decimal(data.valor_gorjeta_calculada);
+    const total = new Decimal(data.total);
 
-    // Generate distribution payloads based on the provided gorjeta value
-    const calculationResult =
-      await this.tipCalculator.generateDistributionsForGorjeta(
-        data.restID,
-        valorGorjeta,
+    const restaurante = await this.prisma.restaurante.findUnique({
+      where: { restID: data.restID },
+      select: { percentagem_gorjeta_base: true },
+    });
+
+    if (!restaurante) {
+      throw new BadRequestException(`Restaurant ${data.restID} not found`);
+    }
+
+    const computation = await this.financeEngine.computeDailyPayouts(
+      data.restID,
+      {
+        faturamento_global: total.toNumber(),
+        faturamento_com_gorjeta: total.toNumber(),
+        faturamento_sem_gorjeta: Math.max(
+          total.minus(valorGorjeta).toNumber(),
+          0,
+        ),
+        valor_total_gorjetas: valorGorjeta.toNumber(),
+      },
+      {
+        insufficientFundsPolicy: 'PARTIAL',
+        base_percentual: Number(restaurante.percentagem_gorjeta_base),
+      },
+    );
+
+    const distributions = computation.employee_breakdown.filter(
+      (line) =>
+        line.funcID != null &&
+        line.real_paid_value > 0 &&
+        line.payment_pool === PaymentSource.TIP_POOL,
+    );
+
+    if (distributions.length === 0) {
+      throw new BadRequestException(
+        `No active TIP_POOL rules with matched employees found for restaurant ${data.restID}`,
       );
+    }
 
-    // Create transaction and distributions atomically
     const transacao = await this.prisma.$transaction(async (tx) => {
-      // Create transaction
       const newTransacao = await tx.transacao.create({
         data: {
-          total: new Decimal(data.total),
+          total,
           valor_gorjeta_calculada: valorGorjeta,
-          percentagem_aplicada: calculationResult.base_percentage,
+          percentagem_aplicada: restaurante.percentagem_gorjeta_base,
           mbway: new Decimal(data.mbway || 0),
           funcID_garcom: data.funcID_garcom,
           restID: data.restID,
@@ -40,15 +70,14 @@ export class TransacoesService {
         },
       });
 
-      // Create distribution records
-      for (const dist of calculationResult.distributions) {
+      for (const dist of distributions) {
         await tx.distribuicaoGorjetas.create({
           data: {
             tranID: newTransacao.tranID,
-            funcID: dist.funcID,
-            tipo_distribuicao: dist.funcao,
-            percentagem_aplicada: dist.percentagem_aplicada,
-            valor_calculado: dist.valor_calculado,
+            funcID: dist.funcID!,
+            tipo_distribuicao: dist.role_bucket,
+            percentagem_aplicada: new Decimal(dist.rate),
+            valor_calculado: new Decimal(dist.real_paid_value),
           },
         });
       }
@@ -56,7 +85,6 @@ export class TransacoesService {
       return newTransacao;
     });
 
-    // Fetch full transaction with distributions
     return this.findOneWithDistributions(transacao.tranID);
   }
 
@@ -78,7 +106,6 @@ export class TransacoesService {
         where.data_transacao.gte = new Date(from);
       }
       if (to) {
-        // Set to end of day for 'to' date
         const toDate = new Date(to);
         toDate.setHours(23, 59, 59, 999);
         where.data_transacao.lte = toDate;
@@ -125,5 +152,17 @@ export class TransacoesService {
         },
       },
     });
+  }
+
+  private async validateGarcom(funcID: number, restID: number): Promise<void> {
+    const funcionario = await this.prisma.funcionario.findUnique({
+      where: { funcID },
+    });
+
+    if (!funcionario || funcionario.restID !== restID) {
+      throw new BadRequestException(
+        `Waiter ${funcID} not found in restaurant ${restID}`,
+      );
+    }
   }
 }

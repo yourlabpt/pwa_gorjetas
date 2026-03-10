@@ -19,7 +19,7 @@ services:
     restart: unless-stopped
     depends_on:
       - caddy
-    command: tunnel --no-autoupdate --url http://caddy:8080
+    command: tunnel --no-autoupdate --protocol http2 --url http://caddy:8080
     networks:
       - internal
 

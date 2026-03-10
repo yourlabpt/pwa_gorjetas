@@ -1,4 +1,5 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { isAdminLike } from './role.util';
 
 @Injectable()
 export class RestaurantAccessGuard implements CanActivate {
@@ -8,7 +9,7 @@ export class RestaurantAccessGuard implements CanActivate {
 
     // No user means public route or unauthenticated; JwtAuthGuard should handle auth.
     if (!user) return true;
-    if (user.role === 'ADMIN') return true;
+    if (isAdminLike(user.role)) return true;
 
     const restID =
       (request.query?.restID && Number(request.query.restID)) ||

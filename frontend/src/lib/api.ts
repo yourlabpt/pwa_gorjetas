@@ -62,11 +62,7 @@ class ApiClient {
   }
 
   async register(data: { name: string; email: string; password: string; role: string; restaurantIds?: number[] }) {
-    const res = await this.client.post('/auth/register', data);
-    if (res.data?.accessToken) {
-      this.setAuthToken(res.data.accessToken);
-    }
-    return res;
+    return this.client.post('/auth/register', data);
   }
 
   async me() {
@@ -127,23 +123,6 @@ class ApiClient {
 
   async deleteFuncionario(funcID: number) {
     return this.client.delete(`/funcionarios/${funcID}`);
-  }
-
-  // Configuracao Gorjetas
-  async getConfiguracoes(restID: number) {
-    return this.client.get('/configuracao-gorjetas', { params: { restID } });
-  }
-
-  async createConfiguracao(data: any) {
-    return this.client.post('/configuracao-gorjetas', data);
-  }
-
-  async updateConfiguracao(configID: number, data: any) {
-    return this.client.put(`/configuracao-gorjetas/${configID}`, data);
-  }
-
-  async deleteConfiguracao(configID: number) {
-    return this.client.delete(`/configuracao-gorjetas/${configID}`);
   }
 
   // Transacoes
@@ -295,6 +274,80 @@ class ApiClient {
     });
   }
 
+  /**
+   * Server-side daily payout computation using RegraDistribuicao rules.
+   * Does NOT save anything — returns the calculated breakdown.
+   */
+  async computeFinanceiroPayouts(
+    restID: number,
+    data: {
+      faturamento_global: number;
+      valor_total_gorjetas: number;
+      faturamento_com_gorjeta?: number;
+      faturamento_sem_gorjeta?: number;
+      staff_direct_tip_pool_total?: number;
+      base_percentual?: number;
+      staff?: Array<{
+        funcID: number;
+        valor_pool?: number;
+        valor_direto?: number;
+      }>;
+      data?: string;
+      allowNegativeBalances?: boolean;
+      insufficientFundsPolicy?: 'SKIP' | 'PARTIAL';
+    },
+  ) {
+    return this.client.post('/faturamento-diario/compute', data, {
+      params: { restID },
+    });
+  }
+
+  // Fecho Financeiro
+  async getFechoTemplates(restID: number) {
+    return this.client.get('/fecho-financeiro/templates', { params: { restID } });
+  }
+
+  async createFechoTemplate(restID: number, data: { label: string; ordem?: number }) {
+    return this.client.post('/fecho-financeiro/templates', data, { params: { restID } });
+  }
+
+  async updateFechoTemplate(id: number, restID: number, data: { label?: string; ordem?: number; ativo?: boolean }) {
+    return this.client.put(`/fecho-financeiro/templates/${id}`, data, { params: { restID } });
+  }
+
+  async deleteFechoTemplate(id: number, restID: number) {
+    return this.client.delete(`/fecho-financeiro/templates/${id}`, { params: { restID } });
+  }
+
+  async getFecho(restID: number, data: string) {
+    return this.client.get('/fecho-financeiro', { params: { restID, data } });
+  }
+
+  async saveFecho(restID: number, body: { data: string; faturamento_global?: number; dinheiro_a_depositar?: number; notas?: string; itens: { templateId?: number | null; label: string; valor: number }[] }) {
+    return this.client.post('/fecho-financeiro', body, { params: { restID } });
+  }
+
+  async getFechoRange(restID: number, from: string, to: string) {
+    return this.client.get('/fecho-financeiro/range', { params: { restID, from, to } });
+  }
+
+  // Regras Distribuicao
+  async getRegrasDistribuicao(restID: number, todos = false) {
+    return this.client.get('/regras-distribuicao', { params: { restID, todos } });
+  }
+
+  async createRegraDistribuicao(restID: number, data: any) {
+    return this.client.post('/regras-distribuicao', data, { params: { restID } });
+  }
+
+  async updateRegraDistribuicao(id: number, restID: number, data: any) {
+    return this.client.put(`/regras-distribuicao/${id}`, data, { params: { restID } });
+  }
+
+  async deleteRegraDistribuicao(id: number, restID: number) {
+    return this.client.delete(`/regras-distribuicao/${id}`, { params: { restID } });
+  }
+
   // Users (admin only)
   async getUsers() {
     return this.client.get('/users');
@@ -306,6 +359,14 @@ class ApiClient {
 
   async setUserRestaurants(id: number, restIDs: number[]) {
     return this.client.put(`/users/${id}/restaurantes`, { restIDs });
+  }
+
+  async deleteUser(id: number) {
+    return this.client.delete(`/users/${id}`);
+  }
+
+  async resetUserPassword(id: number, newPassword: string) {
+    return this.client.put(`/users/${id}/password`, { newPassword });
   }
 }
 

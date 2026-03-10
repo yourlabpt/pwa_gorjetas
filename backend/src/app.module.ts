@@ -2,11 +2,9 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from './prisma/prisma.module';
 import { RestaurantesModule } from './restaurantes/restaurantes.module';
 import { FuncionariosModule } from './funcionarios/funcionarios.module';
-import { ConfiguracaoGorjetasModule } from './configuracao-gorjetas/configuracao-gorjetas.module';
 import { TransacoesModule } from './transacoes/transacoes.module';
 import { DistribuicaoGorjetasModule } from './distribuicao-gorjetas/distribuicao-gorjetas.module';
 import { RelatoriosModule } from './relatorios/relatorios.module';
-import { TipCalculatorModule } from './tip-calculator/tip-calculator.module';
 import { FaturamentoDiarioModule } from './faturamento-diario/faturamento-diario.module';
 import { ConfiguracaoAcertoModule } from './configuracao-acerto/configuracao-acerto.module';
 import { AcertoPeridoModule } from './acerto-periodo/acerto-periodo.module';
@@ -15,6 +13,10 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RestaurantAccessGuard } from './auth/restaurant-access.guard';
 import { UsersModule } from './users/users.module';
+import { FechoFinanceiroModule } from './fecho-financeiro/fecho-financeiro.module';
+import { PayoutCalculatorModule } from './payout-calculator/payout-calculator.module';
+import { RegrasDistribuicaoModule } from './regras-distribuicao/regras-distribuicao.module';
+import { FinanceEngineModule } from './finance-engine/finance-engine.module';
 
 @Module({
   imports: [
@@ -23,14 +25,16 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     RestaurantesModule,
     FuncionariosModule,
-    ConfiguracaoGorjetasModule,
     TransacoesModule,
     DistribuicaoGorjetasModule,
     RelatoriosModule,
-    TipCalculatorModule,
     FaturamentoDiarioModule,
     ConfiguracaoAcertoModule,
     AcertoPeridoModule,
+    FechoFinanceiroModule,
+    PayoutCalculatorModule,
+    RegrasDistribuicaoModule,
+    FinanceEngineModule,
   ],
   controllers: [],
   providers: [

@@ -12,9 +12,8 @@ export class RestaurantesService {
       ? new Decimal(data.percentagem_gorjeta_base)
       : new Decimal('10.00');
 
-    // Create restaurant and default configurations atomically
+    // Create restaurant and default rules atomically
     return this.prisma.$transaction(async (tx) => {
-      // Create the restaurant
       const restaurante = await tx.restaurante.create({
         data: {
           name: data.name,
@@ -24,21 +23,38 @@ export class RestaurantesService {
         },
       });
 
-      // Create default tip configurations
-      // These match the seed data: garcom 7%, cozinha 3%, supervisor 1%
       const defaultConfigs = [
-        { funcao: 'garcom', percentagem: new Decimal('7.00') },
-        { funcao: 'cozinha', percentagem: new Decimal('3.00') },
-        { funcao: 'supervisor', percentagem: new Decimal('1.00') },
+        {
+          funcao: 'garcom',
+          percentagem: new Decimal('7.00'),
+          split_mode: 'PROPORTIONAL_TO_POOL_INPUT',
+        },
+        {
+          funcao: 'cozinha',
+          percentagem: new Decimal('3.00'),
+          split_mode: 'EQUAL_SPLIT',
+        },
+        {
+          funcao: 'supervisor',
+          percentagem: new Decimal('1.00'),
+          split_mode: 'EQUAL_SPLIT',
+        },
       ];
 
-      for (const config of defaultConfigs) {
-        await tx.configuracaoGorjetas.create({
+      for (const [idx, config] of defaultConfigs.entries()) {
+        await tx.regraDistribuicao.create({
           data: {
             restID: restaurante.restID,
-            funcao: config.funcao,
-            percentagem: config.percentagem,
-          },
+            role_name: config.funcao,
+            calculation_type: 'PERCENT' as any,
+            calculation_base: 'VALOR_TOTAL_GORJETAS' as any,
+            rate: config.percentagem,
+            percent_mode: 'BASE_PERCENT_POINTS' as any,
+            split_mode: config.split_mode as any,
+            payment_source: 'TIP_POOL' as any,
+            ordem: idx + 1,
+            ativo: true,
+          } as any,
         });
       }
 
@@ -145,7 +161,7 @@ export class RestaurantesService {
       });
 
       // 4. Delete all configurations for this restaurant
-      await tx.configuracaoGorjetas.deleteMany({
+      await tx.regraDistribuicao.deleteMany({
         where: { restID },
       });
 

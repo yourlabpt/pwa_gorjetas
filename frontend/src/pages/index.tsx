@@ -1,7 +1,35 @@
+'use client';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
+import { apiClient } from '../lib/api';
 import styles from '../styles/financeiro-diario.module.css';
 
+const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'GERENTE'];
+
 export default function Home() {
+  const router = useRouter();
+  const [authorized, setAuthorized] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+        if (!token) { router.replace('/login'); return; }
+        const res = await apiClient.me();
+        const role: string = res.data?.role || '';
+        if (!ALLOWED_ROLES.includes(role)) { router.replace('/'); return; }
+        setAuthorized(true);
+      } catch {
+        router.replace('/login');
+      }
+    };
+    checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (authorized === null) return <Layout><div className={styles.container}><p className={styles.muted}>Verificando permissões…</p></div></Layout>;
+
   return (
     <Layout>
       <div className={styles.container}>
@@ -35,10 +63,15 @@ export default function Home() {
               <span className={styles.summaryValue}>Ver relatórios</span>
               <span className={styles.summaryMeta}>Compare dias e veja totais por colaborador.</span>
             </a>
+            <a href="/acerto-final" className={styles.summaryCard} style={{ textDecoration: 'none', color: 'inherit' }}>
+              <span className={styles.summaryLabel}>Fechamento</span>
+              <span className={styles.summaryValue}>Acerto final</span>
+              <span className={styles.summaryMeta}>Feche um período com ajuste por função e por funcionário.</span>
+            </a>
             <a href="/configuracao" className={styles.summaryCard} style={{ textDecoration: 'none', color: 'inherit' }}>
               <span className={styles.summaryLabel}>Configuração</span>
               <span className={styles.summaryValue}>Ajustar regras</span>
-              <span className={styles.summaryMeta}>Defina percentuais e quem participa da distribuição.</span>
+              <span className={styles.summaryMeta}>Gestão central de regras e acertos por restaurante.</span>
             </a>
           </div>
         </div>
@@ -52,17 +85,17 @@ export default function Home() {
           <a href="/funcionarios" className={styles.summaryCard} style={{ textDecoration: 'none', color: 'inherit' }}>
             <span className={styles.summaryLabel}>Equipe</span>
             <span className={styles.summaryValue}>Funcionários</span>
-            <span className={styles.summaryMeta}>Cadastre staff, gestores, supervisores e chamadores.</span>
+            <span className={styles.summaryMeta}>Cadastre staff, gerentes, supervisores e chamadores.</span>
           </a>
-          <a href="/configuracao" className={styles.summaryCard} style={{ textDecoration: 'none', color: 'inherit' }}>
-            <span className={styles.summaryLabel}>Configuração</span>
+          <a href="/restaurantes" className={styles.summaryCard} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span className={styles.summaryLabel}>Regras</span>
             <span className={styles.summaryValue}>Distribuição</span>
-            <span className={styles.summaryMeta}>Defina percentuais e regras de acerto por restaurante.</span>
+            <span className={styles.summaryMeta}>Configure cálculo e pagamento por função em cada restaurante.</span>
           </a>
-          <a href="/transacoes" className={styles.summaryCard} style={{ textDecoration: 'none', color: 'inherit' }}>
-            <span className={styles.summaryLabel}>Histórico</span>
-            <span className={styles.summaryValue}>Transações</span>
-            <span className={styles.summaryMeta}>Consulte lançamentos individuais (legado).</span>
+          <a href="/configuracao/acerto" className={styles.summaryCard} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span className={styles.summaryLabel}>Fechamento</span>
+            <span className={styles.summaryValue}>Acertos</span>
+            <span className={styles.summaryMeta}>Ajuste regras de acerto para fechamento de períodos.</span>
           </a>
         </div>
 
@@ -80,7 +113,7 @@ export default function Home() {
               <div className={styles.distributionTitle}>Configurar</div>
               <div className={styles.distributionValue}>Passo 1 — Base</div>
               <div className={styles.distributionMeta}>
-                Cadastre restaurantes e funcionários e ajuste percentuais em Configuração.
+                Cadastre restaurantes e funcionários e ajuste as regras centralizadas.
               </div>
             </div>
             <div className={styles.distributionCard}>

@@ -11,6 +11,10 @@ import { Prisma } from '@prisma/client';
 export class ConfiguracaoAcertoService {
   constructor(private prisma: PrismaService) {}
 
+  private normalizeFuncaoLabel(funcao: string): string {
+    return (funcao || '').trim().replace(/gestor/gi, 'Gerente');
+  }
+
   /**
    * Criar configuração de acerto para uma função
    */
@@ -18,6 +22,7 @@ export class ConfiguracaoAcertoService {
     restID: number,
     dto: CreateConfiguracaoAcertoDto,
   ): Promise<ConfiguracaoAcertoResponseDto> {
+    const funcaoNormalizada = this.normalizeFuncaoLabel(dto.funcao);
     // Validar se restaurante existe
     await this.prisma.restaurante.findUniqueOrThrow({
       where: { restID },
@@ -28,14 +33,14 @@ export class ConfiguracaoAcertoService {
       where: {
         restID_funcao: {
           restID,
-          funcao: dto.funcao,
+          funcao: funcaoNormalizada,
         },
       },
     });
 
     if (existente && existente.ativo) {
       throw new BadRequestException(
-        `Já existe configuração para a função: ${dto.funcao}`,
+        `Já existe configuração para a função: ${funcaoNormalizada}`,
       );
     }
 
@@ -83,7 +88,7 @@ export class ConfiguracaoAcertoService {
     const config = await this.prisma.configuracaoAcerto.create({
       data: {
         restID,
-        funcao: dto.funcao,
+        funcao: funcaoNormalizada,
         base_calculo: dto.base_calculo,
         valor_percentual:
           dto.valor_percentual !== undefined

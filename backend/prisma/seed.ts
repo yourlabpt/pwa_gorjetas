@@ -7,10 +7,12 @@ async function main() {
   console.log('🌱 Seeding database...');
 
   // Cleanup - delete in correct order due to foreign keys
-  await prisma.transacao.deleteMany({});
-  await prisma.limpeza.deleteMany({});
   await prisma.distribuicaoGorjetas.deleteMany({});
-  await prisma.configuracaoGorjetas.deleteMany({});
+  await prisma.transacao.deleteMany({});
+  await prisma.regraDistribuicao.deleteMany({});
+  await prisma.limpezaRecord.deleteMany({});
+  await prisma.limpeza.deleteMany({});
+  await prisma.funcionarioRestaurante.deleteMany({});
   await prisma.funcionario.deleteMany({});
   await prisma.restaurante.deleteMany({});
 
@@ -64,32 +66,53 @@ async function main() {
 
   console.log(`✅ Created ${funcionarios.length} employees`);
 
-  // Create tip configurations
-  const configs = await Promise.all([
-    prisma.configuracaoGorjetas.create({
+  // Create centralized payout rules
+  const regras = await Promise.all([
+    prisma.regraDistribuicao.create({
       data: {
         restID: restaurante.restID,
-        funcao: 'garcom',
-        percentagem: new Decimal('7.00'),
+        role_name: 'garcom',
+        calculation_type: 'PERCENT',
+        calculation_base: 'VALOR_TOTAL_GORJETAS',
+        rate: new Decimal('7.00'),
+        percent_mode: 'BASE_PERCENT_POINTS',
+        split_mode: 'PROPORTIONAL_TO_POOL_INPUT',
+        payment_source: 'TIP_POOL',
+        ordem: 1,
+        ativo: true,
       },
     }),
-    prisma.configuracaoGorjetas.create({
+    prisma.regraDistribuicao.create({
       data: {
         restID: restaurante.restID,
-        funcao: 'cozinha',
-        percentagem: new Decimal('3.00'),
+        role_name: 'cozinha',
+        calculation_type: 'PERCENT',
+        calculation_base: 'VALOR_TOTAL_GORJETAS',
+        rate: new Decimal('3.00'),
+        percent_mode: 'BASE_PERCENT_POINTS',
+        split_mode: 'EQUAL_SPLIT',
+        payment_source: 'TIP_POOL',
+        ordem: 2,
+        ativo: true,
       },
     }),
-    prisma.configuracaoGorjetas.create({
+    prisma.regraDistribuicao.create({
       data: {
         restID: restaurante.restID,
-        funcao: 'douglas',
-        percentagem: new Decimal('1.00'),
+        role_name: 'douglas',
+        calculation_type: 'PERCENT',
+        calculation_base: 'VALOR_TOTAL_GORJETAS',
+        rate: new Decimal('1.00'),
+        percent_mode: 'BASE_PERCENT_POINTS',
+        split_mode: 'EQUAL_SPLIT',
+        payment_source: 'TIP_POOL',
+        ordem: 3,
+        ativo: true,
       },
     }),
   ]);
 
-  console.log(`✅ Created ${configs.length} tip configurations`);
+  console.log(`✅ Created ${regras.length} payout rules`);
 
   console.log('🎉 Seeding completed!');
 }

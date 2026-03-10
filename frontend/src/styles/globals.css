@@ -16,6 +16,7 @@ body {
 
 html {
   scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 /* Layout */
@@ -258,6 +259,28 @@ tbody tr:hover {
 }
 
 @media (max-width: 768px) {
+  .container {
+    padding: 24px 12px 0 12px;
+  }
+
+  h1 {
+    font-size: 28px;
+    margin-bottom: 20px;
+  }
+
+  h2 {
+    font-size: 22px;
+  }
+
+  form {
+    padding: 18px;
+  }
+
+  button,
+  .btn {
+    padding: 10px 14px;
+  }
+
   .grid-cols-2,
   .grid-cols-3 {
     grid-template-columns: 1fr;
@@ -266,6 +289,26 @@ tbody tr:hover {
   nav ul {
     flex-direction: column;
     gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 20px 10px 0 10px;
+  }
+
+  h1 {
+    font-size: 24px;
+    margin-bottom: 16px;
+  }
+
+  h2 {
+    font-size: 20px;
+    margin: 18px 0 12px 0;
+  }
+
+  form {
+    padding: 14px;
   }
 }
 

@@ -177,6 +177,35 @@
   border-color: #d1d5db;
 }
 
+/* Small desktop / tablet landscape */
+@media (max-width: 1024px) {
+  .navContainer {
+    padding: 0 20px;
+    gap: 16px;
+  }
+
+  .navLink {
+    padding: 12px 10px;
+    font-size: 12px;
+  }
+
+  .accountArea {
+    gap: 8px;
+    padding-left: 10px;
+  }
+
+  .accountText {
+    max-width: 160px;
+  }
+
+  .accountEmail {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 /* Tablet - 768px and below */
 @media (max-width: 768px) {
   .hamburger {
@@ -236,7 +265,17 @@
   .accountArea {
     border-left: none;
     padding-left: 0;
-    gap: 8px;
+    gap: 6px;
+  }
+
+  .accountText {
+    display: none;
+  }
+
+  .accountBadge {
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
   }
 
   .accountEmail {
@@ -244,7 +283,8 @@
   }
 
   .accountAction {
-    padding: 8px 10px;
+    padding: 7px 10px;
+    font-size: 11px;
   }
 }
 
@@ -267,6 +307,10 @@
 
   .logo {
     font-size: 14px;
+  }
+
+  .accountAction {
+    padding: 7px 9px;
   }
 
   .navLink {
