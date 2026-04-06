@@ -66,10 +66,36 @@ interface FuncionarioInfo {
 
 interface RegraDistribuicao {
   role_name: string;
+  tipo_de_acerto?: 'DIARIO' | 'PERIODO';
   ordem: number;
+  ativo?: boolean;
+}
+
+type SettlementModeSummary = 'DIARIO' | 'PERIODO' | 'MISTO';
+
+interface BucketConfig {
+  bucket: string;
+  settlementMode: SettlementModeSummary;
+  dailyShare: number;
+}
+
+interface GroupedEmployeeRow {
+  funcID: number;
+  bucket: string;
+  settlementMode: SettlementModeSummary;
+  name: string;
+  diasTrabalhados: number;
+  efetivo: number;
+  teorico: number;
+  naoPago: number;
+  pagoBruto: number;
+  direto: number;
+  jaRecebidoDiario: number;
+  aReceberPeriodo: number;
 }
 
 const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'GERENTE'];
+const round2 = (value: number) => Math.round(value * 100) / 100;
 const normalizeRole = (funcao: string) =>
   (funcao || '')
     .toLowerCase()
@@ -87,12 +113,28 @@ const toRoleBucket = (roleName: string) => {
   return role || 'outros';
 };
 
+const toNumberSafe = (value: any): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getEffectiveSnapshotValue = (entry: SnapshotEntry) => {
+  const bucket = toRoleBucket(entry.employee_funcao || entry.role);
+  const paid = round2(Math.max(toNumberSafe(entry.valor_pago), 0));
+  const direct = round2(Math.max(toNumberSafe(entry.valor_direto), 0));
+
+  if (bucket === 'staff') return round2(paid + direct);
+  if (bucket === 'chamador') return round2(direct > 0 ? direct : paid);
+  return paid;
+};
+
 export default function Relatorios() {
   const router = useRouter();
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [restaurantes, setRestaurantes] = useState<Restaurante[]>([]);
   const [restID, setRestID] = useSessionPageState<number | null>('restID', null);
   const [funcionarios, setFuncionarios] = useState<Record<number, FuncionarioInfo>>({});
+  const [regras, setRegras] = useState<RegraDistribuicao[]>([]);
   const [orderedRuleBuckets, setOrderedRuleBuckets] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -168,7 +210,10 @@ export default function Relatorios() {
     if (!restID) return;
     try {
       const res = await apiClient.getRegrasDistribuicao(restID);
-      const regras = (res.data || []) as RegraDistribuicao[];
+      const regras = ((res.data || []) as RegraDistribuicao[]).filter(
+        (regra) => regra.ativo !== false,
+      );
+      setRegras(regras);
       const buckets: string[] = [];
       regras.forEach((regra) => {
         const bucket = toRoleBucket(regra.role_name);
@@ -176,6 +221,7 @@ export default function Relatorios() {
       });
       setOrderedRuleBuckets(buckets);
     } catch {
+      setRegras([]);
       setOrderedRuleBuckets([]);
     }
   };
@@ -202,20 +248,45 @@ export default function Relatorios() {
     'bar',
   ];
 
+  const bucketConfigs = useMemo(() => {
+    const orderedRules = [...regras].sort((a, b) => a.ordem - b.ordem);
+    const grouped = new Map<string, RegraDistribuicao[]>();
+
+    orderedRules.forEach((rule) => {
+      const bucket = toRoleBucket(rule.role_name);
+      if (!grouped.has(bucket)) grouped.set(bucket, []);
+      grouped.get(bucket)!.push(rule);
+    });
+
+    const configByBucket = new Map<string, BucketConfig>();
+
+    grouped.forEach((rulesInBucket, bucket) => {
+      const dailyRules = rulesInBucket.filter(
+        (rule) => (rule.tipo_de_acerto || 'DIARIO') !== 'PERIODO',
+      ).length;
+      const periodRules = rulesInBucket.length - dailyRules;
+      const totalRules = rulesInBucket.length;
+
+      const dailyShare = totalRules > 0 ? round2(dailyRules / totalRules) : 1;
+
+      let settlementMode: SettlementModeSummary = 'DIARIO';
+      if (dailyRules > 0 && periodRules > 0) settlementMode = 'MISTO';
+      else if (periodRules > 0) settlementMode = 'PERIODO';
+
+      configByBucket.set(bucket, {
+        bucket,
+        settlementMode,
+        dailyShare,
+      });
+    });
+
+    return configByBucket;
+  }, [regras]);
+
   const groupedEmployeeReport = useMemo(() => {
     if (snapshots.length === 0) return [];
 
-    const agg: Record<
-      number,
-      {
-        role: string;
-        pago: number;
-        direto: number;
-        teorico: number;
-        diasTrabalhados: number;
-        name: string;
-      }
-    > = {};
+    const agg: Record<number, GroupedEmployeeRow> = {};
     const daysByEmployee = new Map<number, Set<string>>();
 
     snapshots.forEach((day) => {
@@ -232,52 +303,85 @@ export default function Relatorios() {
       day.entries.forEach((e) => {
         if (e.funcID == null) return;
         const employeeFromMap = funcionarios[e.funcID];
-        const role = employeeFromMap?.funcao
+        const bucket = employeeFromMap?.funcao
           ? toRoleBucket(employeeFromMap.funcao)
           : toRoleBucket(e.employee_funcao || e.role);
+        const config = bucketConfigs.get(bucket);
         const name = employeeFromMap?.name || e.employee_name || `Func ${e.funcID}`;
 
         if (!agg[e.funcID]) {
           agg[e.funcID] = {
-            role,
-            pago: 0,
+            funcID: e.funcID,
+            bucket,
+            settlementMode: config?.settlementMode || 'DIARIO',
+            efetivo: 0,
+            pagoBruto: 0,
             direto: 0,
             teorico: 0,
+            naoPago: 0,
+            jaRecebidoDiario: 0,
+            aReceberPeriodo: 0,
             diasTrabalhados: 0,
             name,
           };
         }
-        agg[e.funcID].role = role;
+        agg[e.funcID].bucket = bucket;
+        agg[e.funcID].settlementMode = config?.settlementMode || agg[e.funcID].settlementMode;
         agg[e.funcID].name = name;
-        agg[e.funcID].pago += e.valor_pago || 0;
-        agg[e.funcID].direto += e.valor_direto || 0;
-        agg[e.funcID].teorico += e.valor_teorico || 0;
+        agg[e.funcID].efetivo = round2(
+          agg[e.funcID].efetivo + getEffectiveSnapshotValue(e),
+        );
+        agg[e.funcID].pagoBruto = round2(
+          agg[e.funcID].pagoBruto + toNumberSafe(e.valor_pago),
+        );
+        agg[e.funcID].direto = round2(
+          agg[e.funcID].direto + toNumberSafe(e.valor_direto),
+        );
+        agg[e.funcID].teorico = round2(
+          agg[e.funcID].teorico + toNumberSafe(e.valor_teorico),
+        );
+        agg[e.funcID].naoPago = round2(
+          agg[e.funcID].naoPago + toNumberSafe(e.valor_nao_pago),
+        );
       });
     });
 
-    Object.entries(agg).forEach(([funcID, data]) => {
-      data.diasTrabalhados = daysByEmployee.get(Number(funcID))?.size || 0;
+    Object.entries(agg).forEach(([funcID, row]) => {
+      row.diasTrabalhados = daysByEmployee.get(Number(funcID))?.size || 0;
+      const config = bucketConfigs.get(row.bucket);
+      const dailyShare = config?.dailyShare ?? 1;
+      row.settlementMode = config?.settlementMode || row.settlementMode;
+      row.jaRecebidoDiario =
+        row.settlementMode === 'PERIODO'
+          ? 0
+          : round2(row.efetivo * dailyShare);
+      row.aReceberPeriodo = round2(Math.max(row.efetivo - row.jaRecebidoDiario, 0));
     });
 
     Object.entries(funcionarios).forEach(([funcIDRaw, employee]) => {
       const funcID = Number(funcIDRaw);
       if (!agg[funcID]) {
+        const bucket = toRoleBucket(employee.funcao);
+        const config = bucketConfigs.get(bucket);
         agg[funcID] = {
-          role: toRoleBucket(employee.funcao),
-          pago: 0,
+          funcID,
+          bucket,
+          settlementMode: config?.settlementMode || 'DIARIO',
+          efetivo: 0,
+          pagoBruto: 0,
           direto: 0,
           teorico: 0,
+          naoPago: 0,
+          jaRecebidoDiario: 0,
+          aReceberPeriodo: 0,
           diasTrabalhados: daysByEmployee.get(funcID)?.size || 0,
           name: employee.name,
         };
       }
     });
 
-    const rows = Object.entries(agg).map(([funcID, data]) => ({
-      funcID: Number(funcID),
-      ...data,
-    }));
-    const bucketsInRows = Array.from(new Set(rows.map((row) => row.role)));
+    const rows = Object.values(agg);
+    const bucketsInRows = Array.from(new Set(rows.map((row) => row.bucket)));
     const orderedBuckets = [
       ...orderedRuleBuckets.filter((bucket) => bucketsInRows.includes(bucket)),
       ...defaultBucketOrder.filter(
@@ -296,14 +400,15 @@ export default function Relatorios() {
     return orderedBuckets.map((bucket) => ({
       bucket,
       title: bucketTitle(bucket),
+      settlementMode: bucketConfigs.get(bucket)?.settlementMode || 'DIARIO',
       rows: rows
-        .filter((row) => row.role === bucket)
+        .filter((row) => row.bucket === bucket)
         .sort((a, b) => {
           const byName = a.name.localeCompare(b.name);
           return byName !== 0 ? byName : a.funcID - b.funcID;
         }),
     }));
-  }, [funcionarios, orderedRuleBuckets, snapshots]);
+  }, [bucketConfigs, funcionarios, orderedRuleBuckets, snapshots]);
 
   const summaryTotals = useMemo(() => {
     const totals = {
@@ -312,39 +417,53 @@ export default function Relatorios() {
       supervisor: 0,
       cozinha: 0,
       chamador: 0,
+      efetivo: 0,
+      teorico: 0,
+      naoPago: 0,
+      jaRecebidoDiario: 0,
+      aReceberPeriodo: 0,
       faturamento: snapshots.reduce(
         (acc, curr) => acc + (curr.faturamento_inserido || 0),
         0,
       ),
     };
 
-    snapshots.forEach((day) => {
-      day.entries.forEach((entry) => {
-        const bucket = toRoleBucket(entry.role);
-        if (bucket === 'staff') {
-          totals.staff += (entry.valor_pago || 0) + (entry.valor_direto || 0);
+    groupedEmployeeReport.forEach((group) => {
+      group.rows.forEach((row) => {
+        totals.efetivo = round2(totals.efetivo + row.efetivo);
+        totals.teorico = round2(totals.teorico + row.teorico);
+        totals.naoPago = round2(totals.naoPago + row.naoPago);
+        totals.jaRecebidoDiario = round2(
+          totals.jaRecebidoDiario + row.jaRecebidoDiario,
+        );
+        totals.aReceberPeriodo = round2(
+          totals.aReceberPeriodo + row.aReceberPeriodo,
+        );
+
+        if (row.bucket === 'staff') {
+          totals.staff = round2(totals.staff + row.efetivo);
           return;
         }
-        if (bucket === 'gerente') {
-          totals.gerente += entry.valor_pago || 0;
+        if (row.bucket === 'gerente') {
+          totals.gerente = round2(totals.gerente + row.efetivo);
           return;
         }
-        if (bucket === 'supervisor') {
-          totals.supervisor += entry.valor_pago || 0;
+        if (row.bucket === 'supervisor') {
+          totals.supervisor = round2(totals.supervisor + row.efetivo);
           return;
         }
-        if (bucket === 'cozinha' || bucket === 'bar') {
-          totals.cozinha += entry.valor_pago || 0;
+        if (row.bucket === 'cozinha' || row.bucket === 'bar') {
+          totals.cozinha = round2(totals.cozinha + row.efetivo);
           return;
         }
-        if (bucket === 'chamador') {
-          totals.chamador += entry.valor_pago || 0;
+        if (row.bucket === 'chamador') {
+          totals.chamador = round2(totals.chamador + row.efetivo);
         }
       });
     });
 
     return totals;
-  }, [snapshots]);
+  }, [groupedEmployeeReport, snapshots]);
 
   const fetchSnapshots = async (nextFromDate?: string, nextToDate?: string) => {
     if (!restID) return;
@@ -450,24 +569,36 @@ export default function Relatorios() {
             {snapshots.length > 0 && (
               <div className={styles.summaryGrid}>
                 <div className={styles.summaryCard}>
-                  <span className={styles.summaryLabel}>Staff (pool + diretas)</span>
+                  <span className={styles.summaryLabel}>Staff (efetivo)</span>
                   <strong className={styles.summaryValue}>€ {summaryTotals.staff.toFixed(2)}</strong>
                 </div>
                 <div className={styles.summaryCard}>
-                  <span className={styles.summaryLabel}>Gerente</span>
+                  <span className={styles.summaryLabel}>Gerente (efetivo)</span>
                   <strong className={styles.summaryValue}>€ {summaryTotals.gerente.toFixed(2)}</strong>
                 </div>
                 <div className={styles.summaryCard}>
-                  <span className={styles.summaryLabel}>Supervisor</span>
+                  <span className={styles.summaryLabel}>Supervisor (efetivo)</span>
                   <strong className={styles.summaryValue}>€ {summaryTotals.supervisor.toFixed(2)}</strong>
                 </div>
                 <div className={styles.summaryCard}>
-                  <span className={styles.summaryLabel}>Cozinha</span>
+                  <span className={styles.summaryLabel}>Cozinha (efetivo)</span>
                   <strong className={styles.summaryValue}>€ {summaryTotals.cozinha.toFixed(2)}</strong>
                 </div>
                 <div className={styles.summaryCard}>
-                  <span className={styles.summaryLabel}>Chamadores</span>
+                  <span className={styles.summaryLabel}>Chamadores (efetivo)</span>
                   <strong className={styles.summaryValue}>€ {summaryTotals.chamador.toFixed(2)}</strong>
+                </div>
+                <div className={styles.summaryCard}>
+                  <span className={styles.summaryLabel}>Já recebido (diário)</span>
+                  <strong className={styles.summaryValue}>€ {summaryTotals.jaRecebidoDiario.toFixed(2)}</strong>
+                </div>
+                <div className={styles.summaryCard}>
+                  <span className={styles.summaryLabel}>A receber (período)</span>
+                  <strong className={styles.summaryValue}>€ {summaryTotals.aReceberPeriodo.toFixed(2)}</strong>
+                </div>
+                <div className={styles.summaryCard}>
+                  <span className={styles.summaryLabel}>Total não pago</span>
+                  <strong className={styles.summaryValue}>€ {summaryTotals.naoPago.toFixed(2)}</strong>
                 </div>
                 <div className={styles.summaryCard}>
                   <span className={styles.summaryLabel}>Faturamento (salvo)</span>
@@ -480,7 +611,7 @@ export default function Relatorios() {
               <div className={styles.sectionHeader}>
                 <div>
                   <h2>Distribuição por Funcionário (período)</h2>
-                  <p>Lista agrupada por função na mesma lógica do Financeiro Diário, mantendo as colunas atuais.</p>
+                  <p>Lista agrupada por função com valor efetivo, valor teórico, já recebido no diário e o que fica para acerto por período.</p>
                 </div>
               </div>
               {groupedEmployeeReport.length === 0 ? (
@@ -489,13 +620,20 @@ export default function Relatorios() {
                 groupedEmployeeReport.map((group) => (
                   <div className={styles.tableWrapper} key={group.bucket} style={{ marginTop: '14px' }}>
                     <h3 style={{ marginBottom: '8px' }}>{group.title}</h3>
+                    <p className={styles.metaText} style={{ marginBottom: '8px' }}>
+                      Tipo de acerto predominante: <strong>{group.settlementMode}</strong>
+                    </p>
                     <table className={styles.table}>
                       <thead>
                         <tr>
                           <th>Funcionário</th>
                           <th>Role</th>
+                          <th>Acerto</th>
                           <th>Dias trabalhados</th>
-                          <th>Pago (€)</th>
+                          <th>Efetivo (€)</th>
+                          <th>Já recebido diário (€)</th>
+                          <th>A receber período (€)</th>
+                          <th>Não pago (€)</th>
                           <th>Direto (€)</th>
                           <th>Teórico (€)</th>
                         </tr>
@@ -514,9 +652,13 @@ export default function Relatorios() {
                                 </div>
                               </div>
                             </td>
-                            <td>{row.role}</td>
+                            <td>{row.bucket}</td>
+                            <td>{row.settlementMode}</td>
                             <td>{row.diasTrabalhados}</td>
-                            <td className={styles.highlight}>€ {row.pago.toFixed(2)}</td>
+                            <td className={styles.highlight}>€ {row.efetivo.toFixed(2)}</td>
+                            <td>€ {row.jaRecebidoDiario.toFixed(2)}</td>
+                            <td>€ {row.aReceberPeriodo.toFixed(2)}</td>
+                            <td>€ {row.naoPago.toFixed(2)}</td>
                             <td>€ {row.direto.toFixed(2)}</td>
                             <td>€ {row.teorico.toFixed(2)}</td>
                           </tr>
@@ -553,6 +695,8 @@ export default function Relatorios() {
 
                     const sum = (arr: SnapshotEntry[], field: keyof SnapshotEntry) =>
                       arr.reduce((acc, curr) => acc + (curr[field] as number), 0);
+                    const sumEffective = (arr: SnapshotEntry[]) =>
+                      arr.reduce((acc, curr) => acc + getEffectiveSnapshotValue(curr), 0);
                     const dayBuckets = Array.from(
                       new Set(day.entries.map((entry) => toRoleBucket(entry.role))),
                     );
@@ -602,25 +746,25 @@ export default function Relatorios() {
                           <div className={styles.summaryCard}>
                             <span className={styles.summaryLabel}>Staff (pool + diretas)</span>
                             <strong className={styles.summaryValue}>
-                              € {(sum(staff, 'valor_pago') + sum(staff, 'valor_direto')).toFixed(2)}
+                              € {sumEffective(staff).toFixed(2)}
                             </strong>
                             <span className={styles.summaryMeta}>Pool: € {sum(staff, 'valor_pool').toFixed(2)}</span>
                           </div>
                           <div className={styles.summaryCard}>
-                            <span className={styles.summaryLabel}>Gerente (real)</span>
-                            <strong className={styles.summaryValue}>€ {sum(gerentes, 'valor_pago').toFixed(2)}</strong>
+                            <span className={styles.summaryLabel}>Gerente (efetivo)</span>
+                            <strong className={styles.summaryValue}>€ {sumEffective(gerentes).toFixed(2)}</strong>
                           </div>
                           <div className={styles.summaryCard}>
-                            <span className={styles.summaryLabel}>Supervisor (real)</span>
-                            <strong className={styles.summaryValue}>€ {sum(supervisores, 'valor_pago').toFixed(2)}</strong>
+                            <span className={styles.summaryLabel}>Supervisor (efetivo)</span>
+                            <strong className={styles.summaryValue}>€ {sumEffective(supervisores).toFixed(2)}</strong>
                           </div>
                           <div className={styles.summaryCard}>
-                            <span className={styles.summaryLabel}>Cozinha</span>
-                            <strong className={styles.summaryValue}>€ {sum(cozinha, 'valor_pago').toFixed(2)}</strong>
+                            <span className={styles.summaryLabel}>Cozinha (efetivo)</span>
+                            <strong className={styles.summaryValue}>€ {sumEffective(cozinha).toFixed(2)}</strong>
                           </div>
                           <div className={styles.summaryCard}>
                             <span className={styles.summaryLabel}>Chamadores</span>
-                            <strong className={styles.summaryValue}>€ {sum(chamadores, 'valor_pago').toFixed(2)}</strong>
+                            <strong className={styles.summaryValue}>€ {sumEffective(chamadores).toFixed(2)}</strong>
                             <span className={styles.summaryMeta}>Fora do pool</span>
                           </div>
                         </div>
@@ -634,7 +778,7 @@ export default function Relatorios() {
                                 <th>Pool (€)</th>
                                 <th>Direto (€)</th>
                                 <th>Teórico (€)</th>
-                                <th>Pago (€)</th>
+                                <th>Efetivo (€)</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -651,7 +795,9 @@ export default function Relatorios() {
                                   <td>€ {e.valor_pool.toFixed(2)}</td>
                                   <td>€ {e.valor_direto.toFixed(2)}</td>
                                   <td>€ {e.valor_teorico.toFixed(2)}</td>
-                                  <td className={styles.highlight}>€ {e.valor_pago.toFixed(2)}</td>
+                                  <td className={styles.highlight}>
+                                    € {getEffectiveSnapshotValue(e).toFixed(2)}
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>

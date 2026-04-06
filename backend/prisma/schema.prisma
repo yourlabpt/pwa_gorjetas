@@ -431,6 +431,7 @@ model FechoFinanceiroItem {
   templateId   Int?
   label        String
   valor        Decimal  @default(0) @db.Decimal(12, 2)
+  contaNoDeposito Boolean @default(false) @map("conta_no_deposito")
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 

@@ -39,6 +39,10 @@ export class FechoItemDto {
   @IsNumber()
   @Min(0)
   valor: number;
+
+  @IsOptional()
+  @IsBoolean()
+  contaNoDeposito?: boolean;
 }
 
 export class SaveFechoDto {

@@ -92,6 +92,7 @@ export class FechoFinanceiroService {
         templateId: t.id,
         label: t.label,
         valor: 0,
+        contaNoDeposito: false,
       })),
     };
   }
@@ -128,6 +129,7 @@ export class FechoFinanceiroService {
           templateId: item.templateId ?? null,
           label: item.label.trim(),
           valor: item.valor,
+          contaNoDeposito: item.contaNoDeposito ?? false,
         })),
       });
     }
@@ -172,6 +174,7 @@ export class FechoFinanceiroService {
         templateId: item.templateId ?? null,
         label: item.label,
         valor: parseFloat(item.valor?.toString() ?? '0'),
+        contaNoDeposito: Boolean(item.contaNoDeposito),
       })),
     };
   }

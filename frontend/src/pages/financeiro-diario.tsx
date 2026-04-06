@@ -98,7 +98,8 @@ interface FechoItemLocal {
   id: number | null;
   templateId: number | null;
   label: string;
-  valor: number;
+  valor: number | '';
+  contaNoDeposito: boolean;
 }
 
 interface FechoData {
@@ -151,6 +152,44 @@ const toRoleBucket = (roleName: string) => {
   return role || 'outros';
 };
 const round2 = (value: number) => Math.round(value * 100) / 100;
+const toFechoItemAmount = (value: number | '' | null | undefined) =>
+  round2(Math.max(Number(value) || 0, 0));
+const formatMoneyInput = (value: number) => {
+  const normalized = round2(value);
+  return normalized > 0 ? normalized.toFixed(2) : '';
+};
+const isFechoBalancingLabel = (label: string) =>
+  normalizeFechoLabel(label).includes('multibanco');
+const calculateFechoItemsTotal = (items: FechoItemLocal[]) =>
+  round2(items.reduce((sum, item) => sum + toFechoItemAmount(item.valor), 0));
+const calculateFechoDepositTotal = (items: FechoItemLocal[]) =>
+  round2(
+    items.reduce(
+      (sum, item) =>
+        sum + (item.contaNoDeposito ? toFechoItemAmount(item.valor) : 0),
+      0,
+    ),
+  );
+const normalizeFechoItems = (
+  items: Array<
+    Partial<FechoItemLocal> & {
+      id: number | null;
+      templateId: number | null;
+      label: string;
+      valor: number | '';
+    }
+  >,
+): FechoItemLocal[] =>
+  items.map((item) => ({
+    id: item.id,
+    templateId: item.templateId,
+    label: item.label,
+    valor: toFechoItemAmount(item.valor),
+    contaNoDeposito:
+      typeof item.contaNoDeposito === 'boolean'
+        ? item.contaNoDeposito
+        : false,
+  }));
 const splitAmount = (total: number, parts: number): number[] => {
   if (parts <= 1) return [round2(total)];
   const base = round2(total / parts);
@@ -206,6 +245,10 @@ export default function FinanceiroDiario() {
   const [fechoSuccess, setFechoSuccess] = useState('');
   const [fechoLoading, setFechoLoading] = useState(false);
   const [fechoSuggestionSyncActive, setFechoSuggestionSyncActive] = useState(false);
+  const [fechoAutoBalanceActive, setFechoAutoBalanceActive] = useSessionPageState<boolean>(
+    'fechoAutoBalanceActive',
+    false,
+  );
   // ────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -296,9 +339,10 @@ export default function FinanceiroDiario() {
       setFechoFaturamento(f.faturamento_global ? String(f.faturamento_global) : '');
       setFechoDinheiro(f.dinheiro_a_depositar ? String(f.dinheiro_a_depositar) : '');
       setFechoNotas(f.notas ?? '');
-      setFechoItens(f.itens ?? []);
+      setFechoItens(normalizeFechoItems(f.itens ?? []));
       setFechoTemplates(templatesRes.data ?? []);
       setFechoSuggestionSyncActive(false);
+      setFechoAutoBalanceActive(false);
     } catch {
       // silently ignore; fecho is optional
     } finally {
@@ -323,13 +367,14 @@ export default function FinanceiroDiario() {
         itens: fechoItens.map((item) => ({
           templateId: item.templateId ?? undefined,
           label: item.label,
-          valor: item.valor,
+          valor: toFechoItemAmount(item.valor),
+          contaNoDeposito: item.contaNoDeposito,
         })),
       };
       const res = await apiClient.saveFecho(restaurantId, body);
       const saved: FechoData = res.data;
       setFechoData(saved);
-      setFechoItens(saved.itens);
+      setFechoItens(normalizeFechoItems(saved.itens));
       setFechoSuccess('Fecho guardado com sucesso!');
       setTimeout(() => setFechoSuccess(''), 3000);
     } catch (err: any) {
@@ -339,24 +384,161 @@ export default function FinanceiroDiario() {
     }
   };
 
-  const updateFechoItem = (index: number, field: keyof FechoItemLocal, value: string | number | null) => {
+  const updateFechoItem = <K extends keyof FechoItemLocal>(
+    index: number,
+    field: K,
+    value: FechoItemLocal[K],
+  ) => {
     setFechoSuggestionSyncActive(false);
+    let stopAutoBalance = false;
+    let nextItems: FechoItemLocal[] = [];
     setFechoItens((prev) => {
       const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
-      return next;
+      const nextItem = { ...next[index], [field]: value };
+      next[index] = nextItem;
+      const editingBalancingValue =
+        field === 'valor' && isFechoBalancingLabel(nextItem.label);
+      stopAutoBalance = editingBalancingValue;
+      nextItems =
+        fechoAutoBalanceActive && !editingBalancingValue
+          ? rebalanceFechoItems(next)
+          : next;
+      return nextItems;
     });
+    if (stopAutoBalance) setFechoAutoBalanceActive(false);
+    syncFechoDinheiroFromItems(nextItems);
   };
+
+  const syncFechoDinheiroFromItems = useCallback((items: FechoItemLocal[]) => {
+    setFechoDinheiro(formatMoneyInput(calculateFechoDepositTotal(items)));
+  }, []);
+
+  const ensureBalancingFechoItem = useCallback(
+    (items: FechoItemLocal[]) => {
+      if (items.some((item) => isFechoBalancingLabel(item.label))) return items;
+      const template = fechoTemplates.find((item) => isFechoBalancingLabel(item.label));
+      return [
+        ...items,
+        {
+          id: null,
+          templateId: template?.id ?? null,
+          label: template?.label || 'Multibanco',
+          valor: '' as const,
+          contaNoDeposito: false,
+        },
+      ];
+    },
+    [fechoTemplates],
+  );
+
+  const rebalanceFechoItems = useCallback(
+    (items: FechoItemLocal[], faturamentoOverride?: string) => {
+      const targetIndex = items.findIndex((item) => isFechoBalancingLabel(item.label));
+      if (targetIndex < 0) return items;
+
+      const faturamentoBase = parseFloat(faturamentoOverride ?? fechoFaturamento) || 0;
+      const otherTotal = round2(
+        items.reduce(
+          (sum, item, index) =>
+            index === targetIndex ? sum : sum + toFechoItemAmount(item.valor),
+          0,
+        ),
+      );
+      const remaining = round2(Math.max(faturamentoBase - otherTotal, 0));
+
+      return items.map((item, index) =>
+        index === targetIndex
+          ? {
+              ...item,
+              valor: remaining > 0 ? remaining : ('' as const),
+            }
+          : item,
+      );
+    },
+    [fechoFaturamento],
+  );
 
   const removeFechoItem = (index: number) => {
     setFechoSuggestionSyncActive(false);
-    setFechoItens((prev) => prev.filter((_, i) => i !== index));
+    let nextItems: FechoItemLocal[] = [];
+    setFechoItens((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      nextItems = fechoAutoBalanceActive ? rebalanceFechoItems(next) : next;
+      return nextItems;
+    });
+    syncFechoDinheiroFromItems(nextItems);
   };
 
   const addFechoItem = () => {
     setFechoSuggestionSyncActive(false);
-    setFechoItens((prev) => [...prev, { id: null, templateId: null, label: '', valor: 0 }]);
+    let nextItems: FechoItemLocal[] = [];
+    setFechoItens((prev) => {
+      const next = [
+        ...prev,
+        {
+          id: null,
+          templateId: null,
+          label: '',
+          valor: '' as const,
+          contaNoDeposito: false,
+        },
+      ];
+      nextItems = fechoAutoBalanceActive ? rebalanceFechoItems(next) : next;
+      return nextItems;
+    });
+    syncFechoDinheiroFromItems(nextItems);
   };
+
+  const toggleFechoItemContaNoDeposito = (index: number) => {
+    setFechoSuggestionSyncActive(false);
+    let nextItems: FechoItemLocal[] = [];
+    setFechoItens((prev) => {
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        contaNoDeposito: !next[index].contaNoDeposito,
+      };
+      nextItems = fechoAutoBalanceActive ? rebalanceFechoItems(next) : next;
+      return nextItems;
+    });
+    syncFechoDinheiroFromItems(nextItems);
+  };
+
+  const applySelectedItemsToDepositField = useCallback(() => {
+    syncFechoDinheiroFromItems(fechoItens);
+  }, [fechoItens, syncFechoDinheiroFromItems]);
+
+  const activateFechoAutoBalance = useCallback(() => {
+    setFechoSuggestionSyncActive(false);
+    setFechoAutoBalanceActive(true);
+    let nextItems: FechoItemLocal[] = [];
+    setFechoItens((prev) => {
+      const withBalancingItem = ensureBalancingFechoItem(prev);
+      nextItems = rebalanceFechoItems(withBalancingItem);
+      return nextItems;
+    });
+    syncFechoDinheiroFromItems(nextItems);
+  }, [
+    ensureBalancingFechoItem,
+    rebalanceFechoItems,
+    setFechoAutoBalanceActive,
+    syncFechoDinheiroFromItems,
+  ]);
+
+  useEffect(() => {
+    if (!fechoAutoBalanceActive) return;
+    let nextItems: FechoItemLocal[] = [];
+    setFechoItens((prev) => {
+      nextItems = rebalanceFechoItems(prev, fechoFaturamento);
+      return nextItems;
+    });
+    syncFechoDinheiroFromItems(nextItems);
+  }, [
+    fechoAutoBalanceActive,
+    fechoFaturamento,
+    rebalanceFechoItems,
+    syncFechoDinheiroFromItems,
+  ]);
 
   const handleAddTemplate = async () => {
     if (!restaurantId || !newTemplateLabel.trim()) return;
@@ -952,7 +1134,6 @@ export default function FinanceiroDiario() {
     staffTotalWithDirect,
     staffDirectTotal,
     distributedFromPool,
-    chamadorTotal,
     roleTotals,
     poolInitial,
     poolAfterStaff,
@@ -963,6 +1144,7 @@ export default function FinanceiroDiario() {
   const resumoOperacionalSuggestedItems = useMemo(() => {
     type SuggestionCategory =
       | 'gorjeta_percentual_total'
+      | 'deposito_multibanco'
       | 'non_pool_gerente'
       | 'non_pool_supervisor'
       | 'non_pool_chamador'
@@ -977,6 +1159,7 @@ export default function FinanceiroDiario() {
       if (normalized.includes('gorjeta') && normalized.includes('percent')) {
         return 'gorjeta_percentual_total';
       }
+      if (normalized.includes('multibanco')) return 'deposito_multibanco';
       if (normalized.includes('gerent')) return 'non_pool_gerente';
       if (normalized.includes('supervisor')) return 'non_pool_supervisor';
       if (normalized.includes('chamador')) return 'non_pool_chamador';
@@ -1087,6 +1270,7 @@ export default function FinanceiroDiario() {
       defaultLabel: string;
       valor: number;
       always?: boolean;
+      contaNoDeposito?: boolean;
     }> = [
       {
         category: 'gorjeta_percentual_total',
@@ -1147,6 +1331,17 @@ export default function FinanceiroDiario() {
       });
     }
 
+    const suggestedNonDepositTotal = round2(
+      baseSuggestions.reduce((sum, item) => sum + round2(item.valor), 0),
+    );
+    baseSuggestions.push({
+      category: 'deposito_multibanco',
+      defaultLabel: 'Multibanco',
+      valor: round2(Math.max((faturamentoNumber || 0) - suggestedNonDepositTotal, 0)),
+      always: true,
+      contaNoDeposito: false,
+    });
+
     return baseSuggestions
       .filter((item) => item.always || round2(item.valor) > 0)
       .map((item) => {
@@ -1156,12 +1351,17 @@ export default function FinanceiroDiario() {
           templateId: template?.id ?? null,
           label: template?.label || item.defaultLabel,
           valor: round2(item.valor),
+          contaNoDeposito:
+            typeof item.contaNoDeposito === 'boolean'
+              ? item.contaNoDeposito
+              : false,
         };
       });
   }, [
     backendComputation,
     distributedFromPool,
     fechoTemplates,
+    faturamentoNumber,
     funcionarios,
     gorjetaInputs,
   ]);
@@ -1204,7 +1404,11 @@ export default function FinanceiroDiario() {
           id: existing?.id ?? null,
           templateId: item.templateId ?? existing?.templateId ?? null,
           label: item.label,
-          valor: round2(item.valor),
+          valor: toFechoItemAmount(item.valor),
+          contaNoDeposito:
+            typeof existing?.contaNoDeposito === 'boolean'
+              ? existing.contaNoDeposito
+              : item.contaNoDeposito,
         };
       });
 
@@ -1225,26 +1429,41 @@ export default function FinanceiroDiario() {
     [],
   );
 
-  const resumoOperacionalSuggestedPayoutTotal = useMemo(
+  const resumoOperacionalSuggestedItemsTotal = useMemo(
     () =>
-      round2(
-        resumoOperacionalSuggestedItems.reduce(
-          (sum, item) => sum + (item.valor || 0),
-          0,
-        ),
-      ),
+      calculateFechoItemsTotal(resumoOperacionalSuggestedItems),
     [resumoOperacionalSuggestedItems],
   );
 
-  const resumoOperacionalSuggestedDinheiro = useMemo(
+  const resumoOperacionalSuggestedDepositTotal = useMemo(
+    () => calculateFechoDepositTotal(resumoOperacionalSuggestedItems),
+    [resumoOperacionalSuggestedItems],
+  );
+
+  const resumoOperacionalSuggestedPayoutTotal = useMemo(
     () =>
       round2(
         Math.max(
-          (faturamentoNumber || 0) - resumoOperacionalSuggestedPayoutTotal,
+          resumoOperacionalSuggestedItemsTotal - resumoOperacionalSuggestedDepositTotal,
           0,
         ),
       ),
-    [faturamentoNumber, resumoOperacionalSuggestedPayoutTotal],
+    [resumoOperacionalSuggestedDepositTotal, resumoOperacionalSuggestedItemsTotal],
+  );
+
+  const fechoItemsTotal = useMemo(
+    () => calculateFechoItemsTotal(fechoItens),
+    [fechoItens],
+  );
+
+  const fechoDepositSelectedTotal = useMemo(
+    () => calculateFechoDepositTotal(fechoItens),
+    [fechoItens],
+  );
+
+  const fechoRemainingBalance = useMemo(
+    () => round2((parseFloat(fechoFaturamento) || 0) - fechoItemsTotal),
+    [fechoFaturamento, fechoItemsTotal],
   );
 
   const applyResumoOperacionalSuggestions = useCallback(() => {
@@ -1267,20 +1486,27 @@ export default function FinanceiroDiario() {
     setFechoFaturamento(
       faturamentoNumber > 0 ? round2(faturamentoNumber).toFixed(2) : '',
     );
-    setFechoDinheiro(round2(resumoOperacionalSuggestedDinheiro).toFixed(2));
-    setFechoItens((prev) =>
-      mergeFechoItemsWithSuggestions(prev, resumoOperacionalSuggestedItems),
-    );
+    let nextItems: FechoItemLocal[] = [];
+    setFechoItens((prev) => {
+      const merged = mergeFechoItemsWithSuggestions(prev, resumoOperacionalSuggestedItems);
+      nextItems = rebalanceFechoItems(ensureBalancingFechoItem(merged), String(faturamentoNumber || 0));
+      return nextItems;
+    });
+    syncFechoDinheiroFromItems(nextItems);
+    setFechoAutoBalanceActive(true);
     setFechoSuggestionSyncActive(true);
 
     setFechoSuccess('Sugestões do Financeiro Diário aplicadas. Revise e ajuste se necessário.');
     setTimeout(() => setFechoSuccess(''), 3000);
   }, [
     backendComputation,
+    ensureBalancingFechoItem,
     faturamentoNumber,
     mergeFechoItemsWithSuggestions,
-    resumoOperacionalSuggestedDinheiro,
     resumoOperacionalSuggestedItems,
+    rebalanceFechoItems,
+    setFechoAutoBalanceActive,
+    syncFechoDinheiroFromItems,
   ]);
 
   useEffect(() => {
@@ -1288,17 +1514,22 @@ export default function FinanceiroDiario() {
     setFechoFaturamento(
       faturamentoNumber > 0 ? round2(faturamentoNumber).toFixed(2) : '',
     );
-    setFechoDinheiro(round2(resumoOperacionalSuggestedDinheiro).toFixed(2));
-    setFechoItens((prev) =>
-      mergeFechoItemsWithSuggestions(prev, resumoOperacionalSuggestedItems),
-    );
+    let nextItems: FechoItemLocal[] = [];
+    setFechoItens((prev) => {
+      const merged = mergeFechoItemsWithSuggestions(prev, resumoOperacionalSuggestedItems);
+      nextItems = rebalanceFechoItems(ensureBalancingFechoItem(merged), String(faturamentoNumber || 0));
+      return nextItems;
+    });
+    syncFechoDinheiroFromItems(nextItems);
   }, [
     backendComputation,
+    ensureBalancingFechoItem,
     faturamentoNumber,
     fechoSuggestionSyncActive,
     mergeFechoItemsWithSuggestions,
-    resumoOperacionalSuggestedDinheiro,
     resumoOperacionalSuggestedItems,
+    rebalanceFechoItems,
+    syncFechoDinheiroFromItems,
   ]);
 
   const roleRulesByBucket = useMemo(() => {
@@ -1456,6 +1687,15 @@ export default function FinanceiroDiario() {
 
     return values;
   }, [backendComputation, funcionarios, gorjetaInputs, isAbsoluteExternalRole]);
+
+  const chamadorEffectiveTotal = useMemo(
+    () =>
+      funcionarios.reduce((sum, func) => {
+        if (toRoleBucket(func.funcao) !== 'chamador') return sum;
+        return sum + (employeeValuesById[func.funcID]?.effective || 0);
+      }, 0),
+    [employeeValuesById, funcionarios],
+  );
 
   const handleSalvarFinanceiro = async () => {
     if (!restaurantId || !selectedDate) {
@@ -2007,7 +2247,7 @@ export default function FinanceiroDiario() {
 
             <div className={styles.distributionCard}>
               <div className={styles.distributionTitle}>Chamadores (faturamento global)</div>
-              <div className={styles.distributionValue}>{currency(chamadorTotal)}</div>
+              <div className={styles.distributionValue}>{currency(chamadorEffectiveTotal)}</div>
               <div className={styles.distributionMeta}>
                 Valores calculados por regras. Fora do pool de gorjetas quando pago via fonte externa.
               </div>
@@ -2053,7 +2293,7 @@ export default function FinanceiroDiario() {
           <div className={styles.sectionHeader}>
             <div>
               <h2>Resumo Operacional</h2>
-              <p>Registo de fecho de caixa: faturação, depósitos e descrição dos valores do faturamento global.</p>
+              <p>Fecho de caixa com linhas personalizadas e depósito selecionável.</p>
             </div>
             {!fechoLoading && fechoData !== null && (
               <span
@@ -2077,17 +2317,19 @@ export default function FinanceiroDiario() {
           <div className={styles.notice} style={{ marginBottom: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div>
-                <strong>Sugestão automática do Financeiro Diário:</strong>{' '}
-                Faturamento {currency(faturamentoNumber)} · Pagamentos sugeridos{' '}
-                {currency(resumoOperacionalSuggestedPayoutTotal)} · Dinheiro estimado para
-                depósito {currency(resumoOperacionalSuggestedDinheiro)}
+                <strong>Sugestão automática:</strong>{' '}
+                {resumoOperacionalSuggestedItems.length} linhas · Total{' '}
+                {currency(resumoOperacionalSuggestedItemsTotal)} · Depósito sugerido{' '}
+                {currency(resumoOperacionalSuggestedDepositTotal)}
                 {resumoOperacionalSuggestedItems.length > 0 && (
-                  <div className={styles.metaText} style={{ marginTop: 4 }}>
-                    Itens sugeridos:{' '}
-                    {resumoOperacionalSuggestedItems
-                      .map((item) => `${item.label}: ${currency(item.valor)}`)
-                      .join(' · ')}
-                  </div>
+                  <details className={styles.metaText} style={{ marginTop: 6 }}>
+                    <summary>Ver itens sugeridos</summary>
+                    <div style={{ marginTop: 6 }}>
+                      {resumoOperacionalSuggestedItems
+                        .map((item) => `${item.label}: ${currency(item.valor)}`)
+                        .join(' · ')}
+                    </div>
+                  </details>
                 )}
               </div>
               <button
@@ -2102,7 +2344,7 @@ export default function FinanceiroDiario() {
           </div>
 
           {/* Summary bar */}
-          {(parseFloat(fechoFaturamento) > 0 || parseFloat(fechoDinheiro) > 0 || fechoItens.reduce((s, i) => s + i.valor, 0) > 0) && (
+          {(parseFloat(fechoFaturamento) > 0 || parseFloat(fechoDinheiro) > 0 || fechoItemsTotal > 0) && (
             <div className={styles.summaryGridSmall} style={{ marginBottom: 16 }}>
               <div className={styles.summaryCard}>
                 <span className={styles.summaryLabel}>Faturamento</span>
@@ -2111,17 +2353,25 @@ export default function FinanceiroDiario() {
               <div className={styles.summaryCard}>
                 <span className={styles.summaryLabel}>Dinheiro a Depositar</span>
                 <strong className={styles.summaryValue}>{currency(parseFloat(fechoDinheiro) || 0)}</strong>
+                <span className={styles.summaryMeta}>Linhas marcadas: {currency(fechoDepositSelectedTotal)}</span>
               </div>
-              {fechoItens.reduce((s, i) => s + i.valor, 0) > 0 && (
+              {fechoItemsTotal > 0 && (
                 <div className={styles.summaryCard}>
                   <span className={styles.summaryLabel}>Total Itens</span>
-                  <strong className={styles.summaryValue}>{currency(fechoItens.reduce((s, i) => s + i.valor, 0))}</strong>
+                  <strong className={styles.summaryValue}>{currency(fechoItemsTotal)}</strong>
                 </div>
               )}
-              {parseFloat(fechoFaturamento) > 0 && parseFloat(fechoDinheiro) > 0 && (
+              {parseFloat(fechoFaturamento) > 0 && (
                 <div className={styles.summaryCard}>
-                  <span className={styles.summaryLabel}>Diferença</span>
-                  <strong className={styles.summaryValue}>{currency((parseFloat(fechoFaturamento) || 0) - (parseFloat(fechoDinheiro) || 0))}</strong>
+                  <span className={styles.summaryLabel}>Saldo p/ Fechar</span>
+                  <strong className={styles.summaryValue}>{currency(Math.abs(fechoRemainingBalance))}</strong>
+                  <span className={styles.summaryMeta}>
+                    {fechoRemainingBalance === 0
+                      ? 'Fechado'
+                      : fechoRemainingBalance > 0
+                        ? 'Falta alocar em linhas'
+                        : 'Linhas acima do faturamento'}
+                  </span>
                 </div>
               )}
             </div>
@@ -2156,6 +2406,55 @@ export default function FinanceiroDiario() {
                 }}
                 placeholder="0.00"
               />
+              <div className={styles.metaText} style={{ marginTop: 6 }}>
+                Linhas marcadas para depósito: {currency(fechoDepositSelectedTotal)}
+              </div>
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                style={{ marginTop: 8 }}
+                onClick={applySelectedItemsToDepositField}
+              >
+                Usar linhas marcadas
+              </button>
+            </div>
+          </div>
+
+          <div className={styles.notice} style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <strong>Fecho por linhas:</strong> Total {currency(fechoItemsTotal)} · Saldo{' '}
+                {currency(Math.abs(fechoRemainingBalance))}
+                <div className={styles.metaText} style={{ marginTop: 4 }}>
+                  {fechoRemainingBalance === 0
+                    ? 'Tudo distribuído.'
+                    : fechoRemainingBalance > 0
+                      ? 'Ainda falta distribuir em linhas.'
+                      : 'As linhas passaram do faturamento global.'}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={styles.btnSecondary}
+                  onClick={activateFechoAutoBalance}
+                >
+                  {fechoAutoBalanceActive ? 'Rebalancear Multibanco' : 'Auto-balancear Multibanco'}
+                </button>
+                {fechoAutoBalanceActive && (
+                  <button
+                    type="button"
+                    className={styles.btnSecondary}
+                    onClick={() => setFechoAutoBalanceActive(false)}
+                  >
+                    Parar auto-balance
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className={styles.metaText} style={{ marginTop: 8 }}>
+              Como usar: 1) ajuste as linhas, 2) marque as que entram no depósito, 3) clique em
+              "Usar linhas marcadas". O auto-balance do Multibanco apenas ajusta o valor da linha.
             </div>
           </div>
 
@@ -2169,6 +2468,7 @@ export default function FinanceiroDiario() {
                     <tr>
                       <th>Descrição</th>
                       <th>Valor (€)</th>
+                      <th>Depósito</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -2191,12 +2491,29 @@ export default function FinanceiroDiario() {
                             min="0"
                             step="0.01"
                             value={item.valor}
-                            onChange={(e) => updateFechoItem(idx, 'valor', parseFloat(e.target.value) || 0)}
+                            onChange={(e) =>
+                              updateFechoItem(
+                                idx,
+                                'valor',
+                                e.target.value === '' ? '' : parseFloat(e.target.value) || 0,
+                              )
+                            }
                             className={styles.smallInput}
                           />
                         </td>
                         <td>
                           <button
+                            type="button"
+                            className={item.contaNoDeposito ? styles.btnPrimary : styles.btnSecondary}
+                            style={{ padding: '6px 10px', fontSize: 12 }}
+                            onClick={() => toggleFechoItemContaNoDeposito(idx)}
+                          >
+                            {item.contaNoDeposito ? 'Conta no depósito' : 'Ignorar'}
+                          </button>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
                             className={styles.btnDanger}
                             style={{ padding: '4px 10px', fontSize: 14 }}
                             onClick={() => removeFechoItem(idx)}

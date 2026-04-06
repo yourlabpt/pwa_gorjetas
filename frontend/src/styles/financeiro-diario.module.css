@@ -61,6 +61,14 @@
   font-size: 14px;
   background: #fff;
   transition: border-color 0.2s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Hide browser-native password reveal button (IE/Edge) */
+.inputGroup input[type='password']::-ms-reveal,
+.inputGroup input[type='password']::-ms-clear {
+  display: none;
 }
 
 .selectGroup select:focus,

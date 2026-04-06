@@ -10,6 +10,7 @@ export default function Navigation() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const router = useRouter();
+  const logoPath = process.env.NEXT_PUBLIC_LOGO_PATH || '/assets/logo.png';
 
   const toggleMenu = () => {
     setIsOpen(!isOpen);
@@ -40,10 +41,24 @@ export default function Navigation() {
   }, [router.asPath]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      if (window.innerWidth > 768) {
+        setIsOpen(false);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof document === 'undefined') return;
     const previousOverflow = document.body.style.overflow;
 
-    if (isOpen) {
+    if (typeof window !== 'undefined' && isOpen && window.innerWidth <= 768) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = previousOverflow || '';
@@ -76,95 +91,117 @@ export default function Navigation() {
       : userRole;
 
   return (
-    <nav className={styles.navbar}>
-      <div className={styles.navContainer}>
-        <Link href="/" className={styles.logo} onClick={closeMenu}>
-          Gorjetas
-        </Link>
-        
-        <button 
+    <>
+      <div className={styles.mobileTopBar}>
+        <button
           className={styles.hamburger}
           onClick={toggleMenu}
           aria-label="Toggle menu"
+          aria-expanded={isOpen}
+          type="button"
         >
           <span className={`${styles.hamburgerLine} ${isOpen ? styles.open : ''}`}></span>
           <span className={`${styles.hamburgerLine} ${isOpen ? styles.open : ''}`}></span>
           <span className={`${styles.hamburgerLine} ${isOpen ? styles.open : ''}`}></span>
         </button>
-        
-        <ul className={`${styles.navMenu} ${isOpen ? styles.open : ''}`}>
-          <li>
-            <Link href="/" className={styles.navLink} onClick={closeMenu}>
-              Início
-            </Link>
-          </li>
-          <li>
-            <Link href="/financeiro-diario" className={styles.navLink} onClick={closeMenu}>
-              Financeiro Diário
-            </Link>
-          </li>
-          <li>
-            <Link href="/acerto-final" className={styles.navLink} onClick={closeMenu}>
-              Acerto Final
-            </Link>
-          </li>
-          <li>
-            <Link href="/funcionarios" className={styles.navLink} onClick={closeMenu}>
-              Funcionários
-            </Link>
-          </li>
-          {userRole !== 'GERENTE' && (
-            <li>
-              <Link href="/restaurantes" className={styles.navLink} onClick={closeMenu}>
-                Restaurantes
-              </Link>
-            </li>
-          )}
-          <li>
-            <Link href="/relatorios" className={styles.navLink} onClick={closeMenu}>
-              Relatórios
-            </Link>
-          </li>
-          <li>
-            <Link href="/configuracao" className={styles.navLink} onClick={closeMenu}>
-              Configuração
-            </Link>
-          </li>
-          {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && (
-            <li>
-              <Link href="/usuarios" className={styles.navLink} onClick={closeMenu}>
-                Usuários
-              </Link>
-            </li>
-          )}
-        </ul>
-
-        <div className={styles.accountArea}>
-          <div
-            className={`${styles.accountBadge} ${isLoggedIn ? styles.accountBadgeOn : styles.accountBadgeOff}`}
-            title={isLoggedIn ? `Logado como ${userEmail}` : 'Não autenticado'}
-          >
-            {userInitial}
-          </div>
-          <div className={styles.accountText}>
-            <span className={styles.accountEmail}>
-              {isLoggedIn ? userEmail : 'Visitante'}
-            </span>
-            <span className={styles.accountMeta}>
-              {isLoggedIn ? (userRoleLabel || 'Conta') : 'Clique para entrar'}
-            </span>
-          </div>
-          {isLoggedIn ? (
-            <button className={styles.accountAction} onClick={handleLogout} title="Sair">
-              Sair
-            </button>
-          ) : (
-            <Link href="/login" className={`${styles.accountAction} ${styles.accountActionGhost}`} onClick={closeMenu}>
-              Entrar
-            </Link>
-          )}
-        </div>
+        <Link href="/" className={styles.mobileBrand} onClick={closeMenu}>
+          <span className={styles.mobileBrandText}>Grupo Ferreira</span>
+          <img src={logoPath} alt="Logo Grupo Ferreira" className={styles.mobileBrandLogo} />
+        </Link>
       </div>
-    </nav>
+
+      <button
+        type="button"
+        className={`${styles.overlay} ${isOpen ? styles.open : ''}`}
+        onClick={closeMenu}
+        aria-label="Fechar menu lateral"
+      />
+
+      <nav className={`${styles.navbar} ${isOpen ? styles.open : ''}`}>
+        <div className={styles.navContainer}>
+          <div className={styles.logoArea}>
+            <Link href="/" className={styles.logo} onClick={closeMenu}>
+              <span className={styles.logoText}>Grupo Ferreira</span>
+              <img src={logoPath} alt="Logo Grupo Ferreira" className={styles.logoImage} />
+            </Link>
+          </div>
+
+          <ul className={styles.navMenu}>
+            <li>
+              <Link href="/" className={styles.navLink} onClick={closeMenu}>
+                Início
+              </Link>
+            </li>
+            <li>
+              <Link href="/financeiro-diario" className={styles.navLink} onClick={closeMenu}>
+                Financeiro Diário
+              </Link>
+            </li>
+            <li>
+              <Link href="/acerto-final" className={styles.navLink} onClick={closeMenu}>
+                Acerto Final
+              </Link>
+            </li>
+            <li>
+              <Link href="/funcionarios" className={styles.navLink} onClick={closeMenu}>
+                Funcionários
+              </Link>
+            </li>
+            {userRole !== 'GERENTE' && (
+              <li>
+                <Link href="/restaurantes" className={styles.navLink} onClick={closeMenu}>
+                  Restaurantes
+                </Link>
+              </li>
+            )}
+            <li>
+              <Link href="/relatorios" className={styles.navLink} onClick={closeMenu}>
+                Relatórios
+              </Link>
+            </li>
+            <li>
+              <Link href="/configuracao" className={styles.navLink} onClick={closeMenu}>
+                Configuração
+              </Link>
+            </li>
+            {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && (
+              <li>
+                <Link href="/usuarios" className={styles.navLink} onClick={closeMenu}>
+                  Usuários
+                </Link>
+              </li>
+            )}
+          </ul>
+
+          <div className={styles.accountArea}>
+            <div className={styles.accountRow}>
+              <div
+                className={`${styles.accountBadge} ${isLoggedIn ? styles.accountBadgeOn : styles.accountBadgeOff}`}
+                title={isLoggedIn ? `Logado como ${userEmail}` : 'Não autenticado'}
+              >
+                {userInitial}
+              </div>
+              <div className={styles.accountText}>
+                <span className={styles.accountEmail}>
+                  {isLoggedIn ? userEmail : 'Visitante'}
+                </span>
+                <span className={styles.accountMeta}>
+                  {isLoggedIn ? (userRoleLabel || 'Conta') : 'Clique para entrar'}
+                </span>
+              </div>
+            </div>
+            {isLoggedIn ? (
+              <button className={styles.accountAction} onClick={handleLogout} title="Sair">
+                Sair
+              </button>
+            ) : (
+              <Link href="/login" className={`${styles.accountAction} ${styles.accountActionGhost}`} onClick={closeMenu}>
+                Entrar
+              </Link>
+            )}
+          </div>
+        </div>
+      </nav>
+    </>
   );
 }

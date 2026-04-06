@@ -45,6 +45,17 @@ export class FaturamentoDiarioService {
     return role === 'staff' || role.includes('garcom');
   }
 
+  private toRoleBucket(roleName: string): string {
+    const role = this.normalizeRole(roleName);
+    if (role === 'staff' || role.includes('garcom')) return 'staff';
+    if (role.includes('gestor') || role.includes('gerente')) return 'gerente';
+    if (role.includes('supervisor')) return 'supervisor';
+    if (role.includes('cozinha')) return 'cozinha';
+    if (role === 'bar' || role.includes('bar')) return 'bar';
+    if (role.includes('chamador')) return 'chamador';
+    return role || 'outros';
+  }
+
   private buildStaffInputsFromDistrib(
     funcionariosAtivos: Array<{ funcID: number; name: string; funcao: string }>,
     distribRows: Array<{
@@ -166,11 +177,15 @@ export class FaturamentoDiarioService {
         valor_direto: number;
         valor_teorico: number;
         valor_pago: number;
+        fromComputation: boolean;
       }
     >();
+    const aggregateKeyByFuncID = new Map<number, string>();
 
     computation.employee_breakdown.forEach((entry) => {
-      const key = `${entry.funcID ?? 'null'}::${entry.role_bucket}`;
+      const existingKey =
+        entry.funcID != null ? aggregateKeyByFuncID.get(entry.funcID) : undefined;
+      const key = existingKey || `${entry.funcID ?? 'null'}::${entry.role_bucket}`;
       const staffInput =
         entry.funcID != null ? legacyInputByFuncID.get(entry.funcID) : undefined;
       const employeeMeta =
@@ -186,12 +201,63 @@ export class FaturamentoDiarioService {
           valor_direto: staffInput?.valor_direto || 0,
           valor_teorico: 0,
           valor_pago: 0,
+          fromComputation: true,
         });
       }
 
       const current = aggregate.get(key)!;
       current.valor_teorico += entry.theoretical_value || 0;
       current.valor_pago += entry.real_paid_value || 0;
+      if (entry.funcID != null) {
+        aggregateKeyByFuncID.set(entry.funcID, key);
+      }
+    });
+
+    distribRows.forEach((row) => {
+      const rowFuncID = row.funcID != null ? Number(row.funcID) : null;
+      const employeeMeta =
+        rowFuncID != null ? employeeMetaByFuncID.get(rowFuncID) : undefined;
+      const roleBucket = this.toRoleBucket(row.role || employeeMeta?.funcao || '');
+      const fallbackRole = roleBucket || this.normalizeRole(row.role || '') || 'outros';
+      const existingKey =
+        rowFuncID != null ? aggregateKeyByFuncID.get(rowFuncID) : undefined;
+      const key = existingKey || `${rowFuncID ?? 'null'}::${fallbackRole}`;
+
+      if (!aggregate.has(key)) {
+        aggregate.set(key, {
+          funcID: rowFuncID,
+          role: fallbackRole,
+          employee_name: employeeMeta?.name || null,
+          employee_funcao: employeeMeta?.funcao || null,
+          valor_pool: 0,
+          valor_direto: 0,
+          valor_teorico: 0,
+          valor_pago: 0,
+          fromComputation: false,
+        });
+      }
+
+      const current = aggregate.get(key)!;
+      const storedPool =
+        row.valor_pool != null ? Number(row.valor_pool.toNumber()) : null;
+      const storedDirect =
+        row.valor_direto != null ? Number(row.valor_direto.toNumber()) : null;
+      const storedPaid = Number(row.valor_pago.toNumber());
+      const hasStoredInput = (storedPool || 0) > 0 || (storedDirect || 0) > 0;
+      const shouldApplyStoredAmounts =
+        !current.fromComputation || hasStoredInput || storedPaid > 0;
+
+      if (storedPool != null) current.valor_pool = storedPool;
+      if (storedDirect != null) current.valor_direto = storedDirect;
+      if (row.valor_teorico != null && shouldApplyStoredAmounts) {
+        current.valor_teorico = Number(row.valor_teorico.toNumber());
+      }
+      if (shouldApplyStoredAmounts) {
+        current.valor_pago = storedPaid;
+      }
+      if (rowFuncID != null) {
+        aggregateKeyByFuncID.set(rowFuncID, key);
+      }
     });
 
     return Array.from(aggregate.values()).map((entry) => ({
@@ -574,8 +640,29 @@ export class FaturamentoDiarioService {
       const legacyStaffByFuncID = new Map(
         (dto.staff || []).map((s) => [
           s.funcID,
-          { valor_pool: s.valor_pool || 0, valor_direto: s.valor_direto || 0 },
+          {
+            valor_pool: s.valor_pool || 0,
+            valor_direto: s.valor_direto || 0,
+            valor_pago: s.valor_pago || 0,
+          },
         ]),
+      );
+      const staffFuncIDs = Array.from(legacyStaffByFuncID.keys());
+      const employeeMetaRows =
+        staffFuncIDs.length > 0
+          ? await tx.funcionario.findMany({
+              where: {
+                restID,
+                funcID: { in: staffFuncIDs },
+              },
+              select: {
+                funcID: true,
+                funcao: true,
+              },
+            })
+          : [];
+      const employeeRoleByFuncID = new Map(
+        employeeMetaRows.map((row) => [row.funcID, row.funcao]),
       );
 
       const aggregate = new Map<
@@ -587,11 +674,15 @@ export class FaturamentoDiarioService {
           valor_direto: number | null;
           valor_teorico: number;
           valor_pago: number;
+          fromComputation: boolean;
         }
       >();
+      const aggregateKeyByFuncID = new Map<number, string>();
 
       computation.employee_breakdown.forEach((entry) => {
-        const key = `${entry.funcID ?? 'null'}::${entry.role_bucket}`;
+        const existingKey =
+          entry.funcID != null ? aggregateKeyByFuncID.get(entry.funcID) : undefined;
+        const key = existingKey || `${entry.funcID ?? 'null'}::${entry.role_bucket}`;
         const staffLegacy =
           entry.funcID != null
             ? legacyStaffByFuncID.get(entry.funcID)
@@ -605,12 +696,52 @@ export class FaturamentoDiarioService {
             valor_direto: staffLegacy?.valor_direto ?? null,
             valor_teorico: 0,
             valor_pago: 0,
+            fromComputation: true,
           });
         }
 
         const current = aggregate.get(key)!;
         current.valor_teorico += entry.theoretical_value;
         current.valor_pago += entry.real_paid_value;
+        if (entry.funcID != null) {
+          aggregateKeyByFuncID.set(entry.funcID, key);
+        }
+      });
+
+      (dto.staff || []).forEach((staffEntry) => {
+        const roleFromEmployee = this.toRoleBucket(
+          employeeRoleByFuncID.get(staffEntry.funcID) || '',
+        );
+        const fallbackRole = roleFromEmployee || 'outros';
+        const existingKey = aggregateKeyByFuncID.get(staffEntry.funcID);
+        const key = existingKey || `${staffEntry.funcID}::${fallbackRole}`;
+
+        if (!aggregate.has(key)) {
+          aggregate.set(key, {
+            funcID: staffEntry.funcID,
+            role: fallbackRole,
+            valor_pool: null,
+            valor_direto: null,
+            valor_teorico: 0,
+            valor_pago: 0,
+            fromComputation: false,
+          });
+        }
+
+        const current = aggregate.get(key)!;
+        const pool = staffEntry.valor_pool ?? 0;
+        const direto = staffEntry.valor_direto ?? 0;
+        const paid = staffEntry.valor_pago ?? 0;
+        const hasExplicitInput = pool > 0 || direto > 0;
+        const shouldApplyManualPaid =
+          !current.fromComputation || hasExplicitInput || paid > 0;
+
+        current.valor_pool = staffEntry.valor_pool ?? current.valor_pool ?? 0;
+        current.valor_direto = staffEntry.valor_direto ?? current.valor_direto ?? 0;
+        if (shouldApplyManualPaid) {
+          current.valor_pago = staffEntry.valor_pago ?? current.valor_pago;
+        }
+        aggregateKeyByFuncID.set(staffEntry.funcID, key);
       });
 
       aggregate.forEach((entry) => {

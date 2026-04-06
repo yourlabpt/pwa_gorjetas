@@ -241,6 +241,20 @@ const computeSourceAllocationForRow = (
   };
 };
 
+const computeSnapshotEntryEffectiveValue = (
+  entry: Pick<SnapshotEntry, 'valor_pago' | 'valor_direto'>,
+  sourceRatios: SourceRatios,
+) => {
+  const paid = round2(Math.max(toNumberSafe(entry.valor_pago), 0));
+  const direct = round2(Math.max(toNumberSafe(entry.valor_direto), 0));
+
+  if (isExternalOnlyRatios(sourceRatios)) {
+    return round2(direct > 0 ? direct : paid);
+  }
+
+  return round2(paid + direct);
+};
+
 export default function AcertoFinalPage() {
   const router = useRouter();
 
@@ -486,6 +500,10 @@ export default function AcertoFinalPage() {
         current.acumuladoTeorico = round2(current.acumuladoTeorico + toNumberSafe(entry.valor_teorico));
         current.acumuladoPago = round2(current.acumuladoPago + toNumberSafe(entry.valor_pago));
         current.acumuladoDireto = round2(current.acumuladoDireto + toNumberSafe(entry.valor_direto));
+        current.acumuladoPeriodo = round2(
+          current.acumuladoPeriodo +
+            computeSnapshotEntryEffectiveValue(entry, current.sourceRatios),
+        );
 
         if (!current.name || current.name.startsWith('Func ')) {
           current.name = entry.employee_name || current.name;
@@ -499,11 +517,7 @@ export default function AcertoFinalPage() {
       const dailyShare = bucketConfig?.dailyShare ?? 1;
       row.settlementMode = bucketConfig?.settlementMode || row.settlementMode;
       row.sourceRatios = bucketConfig?.sourceRatios || row.sourceRatios;
-
-      const externalOnly = isExternalOnlyRatios(row.sourceRatios);
-      row.acumuladoPeriodo = externalOnly
-        ? round2(Math.max(row.acumuladoPago, row.acumuladoDireto))
-        : round2(row.acumuladoPago + row.acumuladoDireto);
+      row.acumuladoPeriodo = round2(Math.max(row.acumuladoPeriodo, 0));
 
       row.jaRecebidoDiario =
         row.settlementMode === 'PERIODO'

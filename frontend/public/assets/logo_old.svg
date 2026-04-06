@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" role="img" aria-labelledby="logo-title logo-desc">
+  <title id="logo-title">Grupo Ferreira</title>
+  <desc id="logo-desc">Logotipo padrão da aplicação</desc>
+  <rect x="8" y="12" width="56" height="56" rx="12" fill="#111827" />
+  <text x="36" y="48" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#ffffff">
+    GF
+  </text>
+  <text x="78" y="35" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#111827">
+    Grupo
+  </text>
+  <text x="78" y="58" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#111827">
+    Ferreira
+  </text>
+</svg>

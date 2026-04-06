@@ -503,40 +503,65 @@ export default function Usuarios() {
                   ))}
                 </select>
               </div>
-              <div className={styles.inputGroup}>
-                <label>Restaurantes atribuídos</label>
-                <div className={styles.summaryGridSmall}>
-                  {restaurantes.map((r) => {
-                    const checked = selectedRests.includes(r.restID);
-                    const disabledSelection = role === 'ADMIN';
-                    return (
-                      <label
-                        key={r.restID}
-                        className={styles.summaryCard}
-                        style={{
-                          borderColor: checked ? '#6366f1' : '#e5e7eb',
-                          boxShadow: checked ? '0 4px 12px rgba(99,102,241,0.12)' : undefined,
-                          cursor: disabledSelection ? 'not-allowed' : 'pointer',
-                          display: 'flex',
-                          gap: '12px',
-                          alignItems: 'center',
-                          opacity: disabledSelection ? 0.7 : 1,
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleRest(r.restID)}
-                          disabled={disabledSelection}
-                        />
-                        <div>
-                          <div className={styles.name}>{r.name}</div>
-                          <div className={styles.metaText}>ID: {r.restID}</div>
+            </div>
+
+            <div className={styles.inputGroup} style={{ marginBottom: '16px' }}>
+              <label>Restaurantes atribuídos</label>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                  width: '100%',
+                }}
+              >
+                {restaurantes.map((r) => {
+                  const checked = selectedRests.includes(r.restID);
+                  const disabledSelection = role === 'ADMIN';
+                  return (
+                    <label
+                      key={r.restID}
+                      className={styles.summaryCard}
+                      style={{
+                        borderColor: checked ? '#6366f1' : '#e5e7eb',
+                        boxShadow: checked ? '0 4px 12px rgba(99,102,241,0.12)' : undefined,
+                        cursor: disabledSelection ? 'not-allowed' : 'pointer',
+                        display: 'grid',
+                        gridTemplateColumns: '18px minmax(0, 1fr)',
+                        columnGap: '12px',
+                        alignItems: 'start',
+                        minWidth: 0,
+                        width: '100%',
+                        opacity: disabledSelection ? 0.7 : 1,
+                        margin: 0,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleRest(r.restID)}
+                        disabled={disabledSelection}
+                        style={{ margin: 0, marginTop: '2px', alignSelf: 'start' }}
+                      />
+                      <div style={{ minWidth: 0, width: '100%' }}>
+                        <div
+                          className={styles.name}
+                          style={{
+                            display: 'block',
+                            whiteSpace: 'normal',
+                            overflowWrap: 'anywhere',
+                            wordBreak: 'break-word',
+                            lineHeight: 1.35,
+                            color: '#0f172a',
+                          }}
+                        >
+                          {r.name}
                         </div>
-                      </label>
-                    );
-                  })}
-                </div>
+                        <div className={styles.metaText}>ID: {r.restID}</div>
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             </div>
 

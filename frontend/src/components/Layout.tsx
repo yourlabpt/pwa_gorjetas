@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import Navigation from './Navigation';
+import styles from './Layout.module.css';
 
 interface LayoutProps {
   children: ReactNode;
@@ -7,11 +8,11 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   return (
-    <div>
+    <div className={styles.layoutRoot}>
       <Navigation />
-      <div className="container">
-        {children}
-      </div>
+      <main className={styles.mainContent}>
+        <div className="container">{children}</div>
+      </main>
     </div>
   );
 }

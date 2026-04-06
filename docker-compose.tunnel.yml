@@ -10,7 +10,10 @@ services:
   caddy:
     volumes:
       - ./deploy/Caddyfile.tunnel:/etc/caddy/Caddyfile:ro
-    ports: []        # no host ports; caddy only serves internally for the tunnel
+    # Optional local-only check path:
+    # curl -I http://127.0.0.1:8080
+    ports: !override
+      - "127.0.0.1:8080:8080"
     expose:
       - "8080"
 
@@ -19,7 +22,7 @@ services:
     restart: unless-stopped
     depends_on:
       - caddy
-    command: tunnel --no-autoupdate --protocol http2 --url http://caddy:8080
+    command: tunnel --no-autoupdate --protocol http2 run --token ${CLOUDFLARED_TUNNEL_TOKEN}
     networks:
       - internal
 

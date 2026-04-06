@@ -1,82 +1,85 @@
 .navbar {
-  background-color: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
-  padding: 0;
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  bottom: 0;
+  width: 272px;
+  background-color: #ffffff;
+  border-right: 1px solid #e5e7eb;
   z-index: 1000;
+  display: flex;
+  flex-direction: column;
 }
 
 .navContainer {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 32px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 64px;
-  gap: 32px;
-  position: relative;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.logoArea {
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .logo {
+  position: relative;
   display: flex;
   align-items: center;
   text-decoration: none;
-  font-size: 16px;
-  font-weight: 600;
+  min-width: 0;
+  width: 100%;
+  min-height: 74px;
+  overflow: hidden;
+}
+
+.logoImage {
+  position: absolute;
+  right: 0;
+  left: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 176px;
+  max-width: 78%;
+  max-height: 74px;
+  object-fit: contain;
+  object-position: right center;
+  height: auto;
+  opacity: 0.58;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.logoText {
   color: #111827;
-  letter-spacing: -0.3px;
-  transition: color 0.2s ease;
-  flex-shrink: 0;
-}
-
-.logo:hover {
-  color: #374151;
-}
-
-.hamburger {
-  display: none;
-  flex-direction: column;
-  gap: 5px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 8px;
-  z-index: 1001;
-}
-
-.hamburgerLine {
-  width: 24px;
-  height: 2.5px;
-  background-color: #111827;
-  border-radius: 2px;
-  transition: all 0.3s ease;
-  display: block;
-}
-
-.hamburger .hamburgerLine.open:nth-child(1) {
-  transform: rotate(45deg) translate(8px, 8px);
-}
-
-.hamburger .hamburgerLine.open:nth-child(2) {
-  opacity: 0;
-}
-
-.hamburger .hamburgerLine.open:nth-child(3) {
-  transform: rotate(-45deg) translate(8px, -8px);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  position: relative;
+  z-index: 1;
+  padding: 4px 8px 4px 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(255, 255, 255, 0.76) 72%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  border-radius: 4px;
+  min-width: 0;
 }
 
 .navMenu {
   list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0;
-  align-items: center;
   margin: 0;
-  padding: 0;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  min-height: 0;
   flex: 1;
-  justify-content: flex-start;
 }
 
 .navLink {
@@ -84,28 +87,35 @@
   align-items: center;
   color: #6b7280;
   text-decoration: none;
-  padding: 12px 16px;
+  padding: 10px 12px;
   font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.2px;
   transition: all 0.15s ease;
-  white-space: nowrap;
-  position: relative;
-  border-bottom: 2px solid transparent;
+  border-radius: 8px;
+  border-left: 3px solid transparent;
 }
 
 .navLink:hover {
   color: #111827;
-  border-bottom-color: #d1d5db;
+  background-color: #f9fafb;
+  border-left-color: #d1d5db;
 }
 
 .accountArea {
+  margin-top: auto;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+.accountRow {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-left: auto;
-  padding-left: 12px;
-  border-left: 1px solid #e5e7eb;
+  min-width: 0;
 }
 
 .accountBadge {
@@ -119,6 +129,7 @@
   font-size: 14px;
   color: #111827;
   background: #e5e7eb;
+  flex-shrink: 0;
 }
 
 .accountBadgeOn {
@@ -134,6 +145,7 @@
 .accountText {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   line-height: 1.2;
 }
 
@@ -141,6 +153,9 @@
   font-size: 13px;
   font-weight: 600;
   color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .accountMeta {
@@ -160,6 +175,11 @@
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
+  width: 100%;
+  text-align: center;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .accountAction:hover {
@@ -177,144 +197,162 @@
   border-color: #d1d5db;
 }
 
-/* Small desktop / tablet landscape */
-@media (max-width: 1024px) {
-  .navContainer {
-    padding: 0 20px;
-    gap: 16px;
-  }
-
-  .navLink {
-    padding: 12px 10px;
-    font-size: 12px;
-  }
-
-  .accountArea {
-    gap: 8px;
-    padding-left: 10px;
-  }
-
-  .accountText {
-    max-width: 160px;
-  }
-
-  .accountEmail {
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.mobileTopBar {
+  display: none;
 }
 
-/* Tablet - 768px and below */
+.mobileBrand {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  min-width: 0;
+  min-height: 38px;
+}
+
+.mobileBrandLogo {
+  width: min(136px, 46vw);
+  max-height: 42px;
+  object-fit: contain;
+  object-position: left center;
+  height: auto;
+  flex-shrink: 0;
+  opacity: 0.2;
+}
+
+.mobileBrandText {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.hamburger {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 8px;
+}
+
+.hamburgerLine {
+  width: 20px;
+  height: 2px;
+  background-color: #111827;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+  display: block;
+}
+
+.hamburger .hamburgerLine.open:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.hamburger .hamburgerLine.open:nth-child(2) {
+  opacity: 0;
+}
+
+.hamburger .hamburgerLine.open:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+.overlay {
+  display: none;
+}
+
 @media (max-width: 768px) {
-  .hamburger {
-    display: flex;
-  }
-
-  .navContainer {
-    flex-wrap: nowrap;
-    padding: 0 16px;
-    height: 64px;
-    gap: 16px;
-  }
-
-  .logo {
-    font-size: 15px;
-    order: 1;
-    flex-grow: 1;
-  }
-
-  .navMenu {
+  .mobileTopBar {
     position: fixed;
-    top: 64px;
+    top: 0;
     left: 0;
-    width: 100%;
-    height: calc(100vh - 64px);
-    background-color: white;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0;
+    right: 0;
+    height: 64px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #ffffff;
+    z-index: 1001;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px;
+  }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    border: none;
     margin: 0;
     padding: 0;
-    transform: translateX(-100%);
-    transition: transform 0.3s ease;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    overflow-y: auto;
-    order: 3;
+    background: rgba(17, 24, 39, 0.42);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+    display: block;
+    z-index: 1002;
   }
 
-  .navMenu.open {
+  .overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .navbar {
+    width: min(84vw, 300px);
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.14);
+    z-index: 1003;
+  }
+
+  .navbar.open {
     transform: translateX(0);
   }
 
-  .navLink {
-    padding: 16px 24px;
-    font-size: 14px;
-    border-bottom: 1px solid #f3f4f6;
-    width: 100%;
-    border-bottom-width: 2px;
-    border-bottom-style: solid;
-    border-bottom-color: transparent;
+  .logoArea {
+    padding-top: 12px;
   }
 
-  .navLink:hover {
-    background-color: #f9fafb;
-  }
-
-  .accountArea {
-    border-left: none;
-    padding-left: 0;
-    gap: 6px;
-  }
-
-  .accountText {
+  .logoImage {
     display: none;
   }
 
-  .accountBadge {
-    width: 30px;
-    height: 30px;
-    font-size: 12px;
-  }
-
-  .accountEmail {
-    font-size: 12px;
-  }
-
-  .accountAction {
-    padding: 7px 10px;
-    font-size: 11px;
-  }
-}
-
-/* Mobile - 480px and below */
-@media (max-width: 480px) {
-  .hamburger {
-    display: flex;
-    padding: 6px;
-  }
-
-  .hamburgerLine {
-    width: 20px;
-    height: 2px;
-  }
-
-  .navContainer {
-    padding: 0 12px;
-    gap: 8px;
+  .logoText {
+    font-size: 15px;
+    padding-left: 0;
   }
 
   .logo {
-    font-size: 14px;
+    min-height: auto;
   }
 
-  .accountAction {
-    padding: 7px 9px;
+  .mobileBrandLogo {
+    display: none;
+  }
+
+  .mobileBrand {
+    gap: 0;
   }
 
   .navLink {
-    padding: 14px 20px;
-    font-size: 13px;
+    font-size: 14px;
+    padding: 12px 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mobileTopBar {
+    padding: 0 10px;
+  }
+
+  .mobileBrandText {
+    font-size: 12px;
+  }
+
+  .hamburger {
+    padding: 7px;
   }
 }

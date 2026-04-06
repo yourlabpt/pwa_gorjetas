@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 FROM node:18-bullseye-slim AS frontend-builder
 WORKDIR /app/frontend
 ARG NEXT_PUBLIC_API_URL="http://localhost:3001"
