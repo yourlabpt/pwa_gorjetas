@@ -17,6 +17,7 @@ import { FechoFinanceiroModule } from './fecho-financeiro/fecho-financeiro.modul
 import { PayoutCalculatorModule } from './payout-calculator/payout-calculator.module';
 import { RegrasDistribuicaoModule } from './regras-distribuicao/regras-distribuicao.module';
 import { FinanceEngineModule } from './finance-engine/finance-engine.module';
+import { AcertoFinalModule } from './acerto-final/acerto-final.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { FinanceEngineModule } from './finance-engine/finance-engine.module';
     PayoutCalculatorModule,
     RegrasDistribuicaoModule,
     FinanceEngineModule,
+    AcertoFinalModule,
   ],
   controllers: [],
   providers: [

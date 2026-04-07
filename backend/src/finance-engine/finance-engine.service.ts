@@ -146,12 +146,12 @@ export class FinanceEngineService {
         totalDirectInput > 0
       ) {
         lineTheoretical = totalDirectInput;
-        linePaid = totalDirectInput;
-        lineUnpaid = 0;
+        linePaid = Math.min(totalDirectInput, tipPoolRemainingAfterRules);
+        lineUnpaid = this.round2(totalDirectInput - linePaid);
         roleLine.base_value = totalDirectInput;
         roleLine.theoretical_amount = totalDirectInput;
-        roleLine.paid_amount = totalDirectInput;
-        roleLine.unpaid_amount = 0;
+        roleLine.paid_amount = linePaid;
+        roleLine.unpaid_amount = lineUnpaid;
         roleLine.role_amount = totalDirectInput;
       }
 
@@ -473,9 +473,9 @@ export class FinanceEngineService {
     const role = this.normalizeRole(roleName);
     if (role === 'staff' || role.includes('garcom')) return 'staff';
     if (role.includes('gestor') || role.includes('gerente')) return 'gerente';
-    if (role.includes('supervisor')) return 'supervisor';
+    if (role.includes('supervisor') || role.includes('chefe de turno') || role.includes('chefe turno')) return 'supervisor';
     if (role.includes('cozinha')) return 'cozinha';
-    if (role === 'bar' || role.includes('bar')) return 'bar';
+    if (role === 'bar' || role.includes('bar') || role.includes('balcao')) return 'bar';
     if (role.includes('chamador')) return 'chamador';
     return role || 'outros';
   }

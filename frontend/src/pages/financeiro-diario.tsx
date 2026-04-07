@@ -23,6 +23,7 @@ interface GorjetaEntry {
   valor: string;
   direta: string;
   presente: boolean;
+  desconto: string;
 }
 
 interface EmployeeTotals {
@@ -110,6 +111,9 @@ interface FechoData {
   dinheiro_a_depositar: number;
   notas: string | null;
   itens: FechoItemLocal[];
+  valor_multibanco?: number | null;
+  sobra_especie?: number | null;
+  sobra_conta_no_deposito?: boolean | null;
 }
 
 interface FechoTemplate {
@@ -145,9 +149,9 @@ const toRoleBucket = (roleName: string) => {
   const role = normalizeRole(roleName);
   if (role === 'staff' || role.includes('garcom')) return 'staff';
   if (role.includes('gestor') || role.includes('gerente')) return 'gerente';
-  if (role.includes('supervisor')) return 'supervisor';
+  if (role.includes('supervisor') || role.includes('chefe de turno') || role.includes('chefe turno')) return 'supervisor';
   if (role.includes('cozinha')) return 'cozinha';
-  if (role === 'bar' || role.includes('bar')) return 'bar';
+  if (role === 'bar' || role.includes('bar') || role.includes('balcao')) return 'bar';
   if (role.includes('chamador')) return 'chamador';
   return role || 'outros';
 };
@@ -245,10 +249,8 @@ export default function FinanceiroDiario() {
   const [fechoSuccess, setFechoSuccess] = useState('');
   const [fechoLoading, setFechoLoading] = useState(false);
   const [fechoSuggestionSyncActive, setFechoSuggestionSyncActive] = useState(false);
-  const [fechoAutoBalanceActive, setFechoAutoBalanceActive] = useSessionPageState<boolean>(
-    'fechoAutoBalanceActive',
-    false,
-  );
+  const [fechoMultibanco, setFechoMultibanco] = useState('');
+  const [sobraContaNoDeposito, setSobraContaNoDeposito] = useState(false);
   // ────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -310,7 +312,7 @@ export default function FinanceiroDiario() {
           const next = { ...prev };
           (funcRes.data || []).forEach((f: Funcionario) => {
             if (!next[f.funcID]) {
-              next[f.funcID] = { valor: '', direta: '', presente: false };
+              next[f.funcID] = { valor: '', direta: '', presente: false, desconto: '' };
             }
           });
           return next;
@@ -339,10 +341,19 @@ export default function FinanceiroDiario() {
       setFechoFaturamento(f.faturamento_global ? String(f.faturamento_global) : '');
       setFechoDinheiro(f.dinheiro_a_depositar ? String(f.dinheiro_a_depositar) : '');
       setFechoNotas(f.notas ?? '');
-      setFechoItens(normalizeFechoItems(f.itens ?? []));
+      // Populate Multibanco from dedicated column or scan items for backward compat
+      if (f.valor_multibanco != null) {
+        setFechoMultibanco(String(f.valor_multibanco));
+      } else {
+        const mbItem = (f.itens ?? []).find((item) => isFechoBalancingLabel(item.label));
+        setFechoMultibanco(mbItem ? String(toFechoItemAmount(mbItem.valor)) : '');
+      }
+      setSobraContaNoDeposito(f.sobra_conta_no_deposito ?? false);
+      // Filter Multibanco items out of fechoItens (now a standalone field)
+      const filteredItems = (f.itens ?? []).filter((item) => !isFechoBalancingLabel(item.label));
+      setFechoItens(normalizeFechoItems(filteredItems));
       setFechoTemplates(templatesRes.data ?? []);
       setFechoSuggestionSyncActive(false);
-      setFechoAutoBalanceActive(false);
     } catch {
       // silently ignore; fecho is optional
     } finally {
@@ -359,22 +370,49 @@ export default function FinanceiroDiario() {
     setFechoSaving(true);
     setFechoSuccess('');
     try {
-      const body = {
-        data: selectedDate,
-        faturamento_global: parseFloat(fechoFaturamento) || 0,
-        dinheiro_a_depositar: parseFloat(fechoDinheiro) || 0,
-        notas: fechoNotas.trim() || undefined,
-        itens: fechoItens.map((item) => ({
+      const multibancoVal = parseFloat(fechoMultibanco) || 0;
+      const sobraVal = sobraEmEspecie;
+      // Build items: user items + Multibanco + Sobra for backward-compat reads
+      const allItems = [
+        ...fechoItens.map((item) => ({
           templateId: item.templateId ?? undefined,
           label: item.label,
           valor: toFechoItemAmount(item.valor),
           contaNoDeposito: item.contaNoDeposito,
         })),
+        {
+          templateId: fechoTemplates.find((t) => isFechoBalancingLabel(t.label))?.id ?? undefined,
+          label: 'Multibanco',
+          valor: multibancoVal,
+          contaNoDeposito: false,
+        },
+        ...(sobraVal !== 0
+          ? [{
+              templateId: undefined as number | undefined,
+              label: 'Sobra em Espécie',
+              valor: sobraVal,
+              contaNoDeposito: sobraContaNoDeposito,
+            }]
+          : []),
+      ];
+      const body = {
+        data: selectedDate,
+        faturamento_global: parseFloat(fechoFaturamento) || 0,
+        dinheiro_a_depositar: parseFloat(fechoDinheiro) || 0,
+        valor_multibanco: multibancoVal,
+        sobra_especie: sobraVal,
+        sobra_conta_no_deposito: sobraContaNoDeposito,
+        notas: fechoNotas.trim() || undefined,
+        itens: allItems,
       };
       const res = await apiClient.saveFecho(restaurantId, body);
       const saved: FechoData = res.data;
       setFechoData(saved);
-      setFechoItens(normalizeFechoItems(saved.itens));
+      // Filter Multibanco/Sobra back out of fechoItens
+      const filteredSaved = (saved.itens ?? []).filter(
+        (item) => !isFechoBalancingLabel(item.label) && normalizeFechoLabel(item.label) !== 'sobra em especie',
+      );
+      setFechoItens(normalizeFechoItems(filteredSaved));
       setFechoSuccess('Fecho guardado com sucesso!');
       setTimeout(() => setFechoSuccess(''), 3000);
     } catch (err: any) {
@@ -390,80 +428,28 @@ export default function FinanceiroDiario() {
     value: FechoItemLocal[K],
   ) => {
     setFechoSuggestionSyncActive(false);
-    let stopAutoBalance = false;
     let nextItems: FechoItemLocal[] = [];
     setFechoItens((prev) => {
       const next = [...prev];
-      const nextItem = { ...next[index], [field]: value };
-      next[index] = nextItem;
-      const editingBalancingValue =
-        field === 'valor' && isFechoBalancingLabel(nextItem.label);
-      stopAutoBalance = editingBalancingValue;
-      nextItems =
-        fechoAutoBalanceActive && !editingBalancingValue
-          ? rebalanceFechoItems(next)
-          : next;
-      return nextItems;
+      next[index] = { ...next[index], [field]: value };
+      nextItems = next;
+      return next;
     });
-    if (stopAutoBalance) setFechoAutoBalanceActive(false);
     syncFechoDinheiroFromItems(nextItems);
   };
 
-  const syncFechoDinheiroFromItems = useCallback((items: FechoItemLocal[]) => {
-    setFechoDinheiro(formatMoneyInput(calculateFechoDepositTotal(items)));
+  const syncFechoDinheiroFromItems = useCallback((items: FechoItemLocal[], includeSobra?: boolean) => {
+    const itemsDeposit = calculateFechoDepositTotal(items);
+    // When sobra is included in deposit, we don't know sobraEmEspecie here because it depends on
+    // items — so we let the caller or a separate effect handle it. For now, just use items total.
+    setFechoDinheiro(formatMoneyInput(itemsDeposit));
   }, []);
-
-  const ensureBalancingFechoItem = useCallback(
-    (items: FechoItemLocal[]) => {
-      if (items.some((item) => isFechoBalancingLabel(item.label))) return items;
-      const template = fechoTemplates.find((item) => isFechoBalancingLabel(item.label));
-      return [
-        ...items,
-        {
-          id: null,
-          templateId: template?.id ?? null,
-          label: template?.label || 'Multibanco',
-          valor: '' as const,
-          contaNoDeposito: false,
-        },
-      ];
-    },
-    [fechoTemplates],
-  );
-
-  const rebalanceFechoItems = useCallback(
-    (items: FechoItemLocal[], faturamentoOverride?: string) => {
-      const targetIndex = items.findIndex((item) => isFechoBalancingLabel(item.label));
-      if (targetIndex < 0) return items;
-
-      const faturamentoBase = parseFloat(faturamentoOverride ?? fechoFaturamento) || 0;
-      const otherTotal = round2(
-        items.reduce(
-          (sum, item, index) =>
-            index === targetIndex ? sum : sum + toFechoItemAmount(item.valor),
-          0,
-        ),
-      );
-      const remaining = round2(Math.max(faturamentoBase - otherTotal, 0));
-
-      return items.map((item, index) =>
-        index === targetIndex
-          ? {
-              ...item,
-              valor: remaining > 0 ? remaining : ('' as const),
-            }
-          : item,
-      );
-    },
-    [fechoFaturamento],
-  );
 
   const removeFechoItem = (index: number) => {
     setFechoSuggestionSyncActive(false);
     let nextItems: FechoItemLocal[] = [];
     setFechoItens((prev) => {
-      const next = prev.filter((_, i) => i !== index);
-      nextItems = fechoAutoBalanceActive ? rebalanceFechoItems(next) : next;
+      nextItems = prev.filter((_, i) => i !== index);
       return nextItems;
     });
     syncFechoDinheiroFromItems(nextItems);
@@ -473,7 +459,7 @@ export default function FinanceiroDiario() {
     setFechoSuggestionSyncActive(false);
     let nextItems: FechoItemLocal[] = [];
     setFechoItens((prev) => {
-      const next = [
+      nextItems = [
         ...prev,
         {
           id: null,
@@ -483,7 +469,6 @@ export default function FinanceiroDiario() {
           contaNoDeposito: false,
         },
       ];
-      nextItems = fechoAutoBalanceActive ? rebalanceFechoItems(next) : next;
       return nextItems;
     });
     syncFechoDinheiroFromItems(nextItems);
@@ -498,8 +483,8 @@ export default function FinanceiroDiario() {
         ...next[index],
         contaNoDeposito: !next[index].contaNoDeposito,
       };
-      nextItems = fechoAutoBalanceActive ? rebalanceFechoItems(next) : next;
-      return nextItems;
+      nextItems = next;
+      return next;
     });
     syncFechoDinheiroFromItems(nextItems);
   };
@@ -507,38 +492,6 @@ export default function FinanceiroDiario() {
   const applySelectedItemsToDepositField = useCallback(() => {
     syncFechoDinheiroFromItems(fechoItens);
   }, [fechoItens, syncFechoDinheiroFromItems]);
-
-  const activateFechoAutoBalance = useCallback(() => {
-    setFechoSuggestionSyncActive(false);
-    setFechoAutoBalanceActive(true);
-    let nextItems: FechoItemLocal[] = [];
-    setFechoItens((prev) => {
-      const withBalancingItem = ensureBalancingFechoItem(prev);
-      nextItems = rebalanceFechoItems(withBalancingItem);
-      return nextItems;
-    });
-    syncFechoDinheiroFromItems(nextItems);
-  }, [
-    ensureBalancingFechoItem,
-    rebalanceFechoItems,
-    setFechoAutoBalanceActive,
-    syncFechoDinheiroFromItems,
-  ]);
-
-  useEffect(() => {
-    if (!fechoAutoBalanceActive) return;
-    let nextItems: FechoItemLocal[] = [];
-    setFechoItens((prev) => {
-      nextItems = rebalanceFechoItems(prev, fechoFaturamento);
-      return nextItems;
-    });
-    syncFechoDinheiroFromItems(nextItems);
-  }, [
-    fechoAutoBalanceActive,
-    fechoFaturamento,
-    rebalanceFechoItems,
-    syncFechoDinheiroFromItems,
-  ]);
 
   const handleAddTemplate = async () => {
     if (!restaurantId || !newTemplateLabel.trim()) return;
@@ -585,7 +538,7 @@ export default function FinanceiroDiario() {
 
   const handleGorjetaChange = (
     funcID: number,
-    field: 'valor' | 'direta',
+    field: 'valor' | 'direta' | 'desconto',
     value: string,
   ) => {
     setGorjetaInputs((prev) => ({
@@ -594,6 +547,7 @@ export default function FinanceiroDiario() {
         valor: prev[funcID]?.valor || '',
         direta: prev[funcID]?.direta || '',
         presente: prev[funcID]?.presente || false,
+        desconto: prev[funcID]?.desconto || '',
         [field]: value,
       },
     }));
@@ -606,6 +560,7 @@ export default function FinanceiroDiario() {
         valor: prev[funcID]?.valor || '',
         direta: prev[funcID]?.direta || '',
         presente,
+        desconto: prev[funcID]?.desconto || '',
       },
     }));
   };
@@ -622,6 +577,7 @@ export default function FinanceiroDiario() {
             valor: '',
             direta: '',
             presente: false,
+            desconto: '',
           };
           return {
             funcionario: func,
@@ -644,7 +600,6 @@ export default function FinanceiroDiario() {
     [dailyInputRows],
   );
   const staffDirectTipPoolTotal = dailyInputRows
-    .filter((row) => isStaffRole(row.funcionario.funcao))
     .reduce((sum, row) => sum + row.directValue, 0);
   const faturamentoNumber = parseFloat(faturamentoGlobal) || 0;
   const totalTips = tipPoolInput;
@@ -1144,7 +1099,6 @@ export default function FinanceiroDiario() {
   const resumoOperacionalSuggestedItems = useMemo(() => {
     type SuggestionCategory =
       | 'gorjeta_percentual_total'
-      | 'deposito_multibanco'
       | 'non_pool_gerente'
       | 'non_pool_supervisor'
       | 'non_pool_chamador'
@@ -1159,7 +1113,7 @@ export default function FinanceiroDiario() {
       if (normalized.includes('gorjeta') && normalized.includes('percent')) {
         return 'gorjeta_percentual_total';
       }
-      if (normalized.includes('multibanco')) return 'deposito_multibanco';
+      if (normalized.includes('multibanco')) return null;
       if (normalized.includes('gerent')) return 'non_pool_gerente';
       if (normalized.includes('supervisor')) return 'non_pool_supervisor';
       if (normalized.includes('chamador')) return 'non_pool_chamador';
@@ -1331,17 +1285,6 @@ export default function FinanceiroDiario() {
       });
     }
 
-    const suggestedNonDepositTotal = round2(
-      baseSuggestions.reduce((sum, item) => sum + round2(item.valor), 0),
-    );
-    baseSuggestions.push({
-      category: 'deposito_multibanco',
-      defaultLabel: 'Multibanco',
-      valor: round2(Math.max((faturamentoNumber || 0) - suggestedNonDepositTotal, 0)),
-      always: true,
-      contaNoDeposito: false,
-    });
-
     return baseSuggestions
       .filter((item) => item.always || round2(item.valor) > 0)
       .map((item) => {
@@ -1466,6 +1409,16 @@ export default function FinanceiroDiario() {
     [fechoFaturamento, fechoItemsTotal],
   );
 
+  const valorTotalEspecie = useMemo(
+    () => round2((parseFloat(fechoFaturamento) || 0) - (parseFloat(fechoMultibanco) || 0)),
+    [fechoFaturamento, fechoMultibanco],
+  );
+
+  const sobraEmEspecie = useMemo(
+    () => round2(valorTotalEspecie - fechoItemsTotal),
+    [valorTotalEspecie, fechoItemsTotal],
+  );
+
   const applyResumoOperacionalSuggestions = useCallback(() => {
     if (!backendComputation) {
       setSnapshotMessage(
@@ -1488,24 +1441,19 @@ export default function FinanceiroDiario() {
     );
     let nextItems: FechoItemLocal[] = [];
     setFechoItens((prev) => {
-      const merged = mergeFechoItemsWithSuggestions(prev, resumoOperacionalSuggestedItems);
-      nextItems = rebalanceFechoItems(ensureBalancingFechoItem(merged), String(faturamentoNumber || 0));
+      nextItems = mergeFechoItemsWithSuggestions(prev, resumoOperacionalSuggestedItems);
       return nextItems;
     });
     syncFechoDinheiroFromItems(nextItems);
-    setFechoAutoBalanceActive(true);
     setFechoSuggestionSyncActive(true);
 
     setFechoSuccess('Sugestões do Financeiro Diário aplicadas. Revise e ajuste se necessário.');
     setTimeout(() => setFechoSuccess(''), 3000);
   }, [
     backendComputation,
-    ensureBalancingFechoItem,
     faturamentoNumber,
     mergeFechoItemsWithSuggestions,
     resumoOperacionalSuggestedItems,
-    rebalanceFechoItems,
-    setFechoAutoBalanceActive,
     syncFechoDinheiroFromItems,
   ]);
 
@@ -1516,19 +1464,16 @@ export default function FinanceiroDiario() {
     );
     let nextItems: FechoItemLocal[] = [];
     setFechoItens((prev) => {
-      const merged = mergeFechoItemsWithSuggestions(prev, resumoOperacionalSuggestedItems);
-      nextItems = rebalanceFechoItems(ensureBalancingFechoItem(merged), String(faturamentoNumber || 0));
+      nextItems = mergeFechoItemsWithSuggestions(prev, resumoOperacionalSuggestedItems);
       return nextItems;
     });
     syncFechoDinheiroFromItems(nextItems);
   }, [
     backendComputation,
-    ensureBalancingFechoItem,
     faturamentoNumber,
     fechoSuggestionSyncActive,
     mergeFechoItemsWithSuggestions,
     resumoOperacionalSuggestedItems,
-    rebalanceFechoItems,
     syncFechoDinheiroFromItems,
   ]);
 
@@ -1613,6 +1558,7 @@ export default function FinanceiroDiario() {
         calculated: number;
         rulesEffective: number;
         directEffective: number;
+        descontoValue: number;
         effective: number;
         unpaid: number;
       }
@@ -1623,6 +1569,7 @@ export default function FinanceiroDiario() {
         calculated: 0,
         rulesEffective: 0,
         directEffective: 0,
+        descontoValue: 0,
         effective: 0,
         unpaid: 0,
       };
@@ -1636,6 +1583,7 @@ export default function FinanceiroDiario() {
           calculated: 0,
           rulesEffective: 0,
           directEffective: 0,
+          descontoValue: 0,
           effective: 0,
           unpaid: 0,
         };
@@ -1653,9 +1601,11 @@ export default function FinanceiroDiario() {
         calculated: 0,
         rulesEffective: 0,
         directEffective: 0,
+        descontoValue: 0,
         effective: 0,
         unpaid: 0,
       };
+      const desconto = parseFloat(gorjetaInputs[func.funcID]?.desconto || '0') || 0;
 
       if (isAbsoluteRole) {
         if (directRaw !== '') {
@@ -1663,7 +1613,8 @@ export default function FinanceiroDiario() {
             calculated: directValue,
             rulesEffective: 0,
             directEffective: directValue,
-            effective: directValue,
+            descontoValue: desconto,
+            effective: Math.max(0, directValue - desconto),
             unpaid: 0,
           };
           return;
@@ -1672,7 +1623,8 @@ export default function FinanceiroDiario() {
         values[func.funcID] = {
           ...current,
           directEffective: 0,
-          effective: current.rulesEffective,
+          descontoValue: desconto,
+          effective: Math.max(0, current.rulesEffective - desconto),
           unpaid: 0,
         };
         return;
@@ -1681,7 +1633,8 @@ export default function FinanceiroDiario() {
       values[func.funcID] = {
         ...current,
         directEffective: directValue,
-        effective: current.rulesEffective + directValue,
+        descontoValue: desconto,
+        effective: Math.max(0, current.rulesEffective + directValue - desconto),
       };
     });
 
@@ -1721,8 +1674,10 @@ export default function FinanceiroDiario() {
             valor: '0',
             direta: '0',
             presente: false,
+            desconto: '0',
           };
           const directValue = parseFloat(entry.direta) || 0;
+          const descontoValue = parseFloat(entry.desconto) || 0;
           const absoluteExternal = isAbsoluteExternalRole(f.funcao);
           return {
             funcID: f.funcID,
@@ -1731,6 +1686,7 @@ export default function FinanceiroDiario() {
             valor_pago: absoluteExternal
               ? directValue
               : employeePaidByEngine[f.funcID] || 0,
+            desconto: descontoValue > 0 ? descontoValue : undefined,
           };
         });
       const presencas = funcionarios.map((f) => ({
@@ -1767,7 +1723,7 @@ export default function FinanceiroDiario() {
     // Build defaults based on current employees to avoid stale values when switching datas
     const defaultStaffState: Record<number, GorjetaEntry> = {};
     funcionarios.forEach((f) => {
-      defaultStaffState[f.funcID] = { valor: '', direta: '', presente: false };
+      defaultStaffState[f.funcID] = { valor: '', direta: '', presente: false, desconto: '' };
     });
 
     setGorjetaInputs(defaultStaffState);
@@ -1838,12 +1794,15 @@ export default function FinanceiroDiario() {
         const resolvedPool = poolValue > 0 ? poolValue : legacyStaffPoolValue;
         const resolvedDirect = directValue > 0 ? directValue : legacyAbsoluteValue;
 
+        const descontoValue = Number(e.desconto || 0);
+
         if (e.funcID != null && gorjetaState[e.funcID] !== undefined) {
           const existing = gorjetaState[e.funcID];
           gorjetaState[e.funcID] = {
             valor: resolvedPool > 0 ? resolvedPool.toString() : '',
             direta: resolvedDirect > 0 ? resolvedDirect.toString() : '',
             presente: existing?.presente || false,
+            desconto: descontoValue > 0 ? descontoValue.toString() : '',
           };
           return;
         }
@@ -1869,6 +1828,7 @@ export default function FinanceiroDiario() {
             valor: '',
             direta: '',
             presente: false,
+            desconto: '',
           };
           const currentPool = parseFloat(current.valor || '0') || 0;
           const currentDirect = parseFloat(current.direta || '0') || 0;
@@ -1878,6 +1838,7 @@ export default function FinanceiroDiario() {
             valor: mergedPool > 0 ? mergedPool.toString() : '',
             direta: mergedDirect > 0 ? mergedDirect.toString() : '',
             presente: current.presente,
+            desconto: current.desconto,
           };
         });
       });
@@ -1893,6 +1854,7 @@ export default function FinanceiroDiario() {
             valor: '',
             direta: '',
             presente: false,
+            desconto: '',
           };
         }
         gorjetaState[func.funcID] = {
@@ -2071,6 +2033,7 @@ export default function FinanceiroDiario() {
                     <th>Presente</th>
                     <th>Gorjeta Percentual (€)</th>
                     <th>Gorjeta Direta (€)</th>
+                    <th>Desconto (€)</th>
                     <th>Valor Calculado (€)</th>
                     <th>Valor Efetivo (€)</th>
                     <th>Valor Não Pago (€)</th>
@@ -2082,6 +2045,7 @@ export default function FinanceiroDiario() {
                       valor: '',
                       direta: '',
                       presente: false,
+                      desconto: '',
                     };
                     const isAbsoluteRole = isAbsoluteExternalRole(func.funcao);
                     const calculatedValue = employeeValuesById[func.funcID]?.calculated || 0;
@@ -2089,6 +2053,7 @@ export default function FinanceiroDiario() {
                       employeeValuesById[func.funcID]?.rulesEffective || 0;
                     const directEffectiveValue =
                       employeeValuesById[func.funcID]?.directEffective || 0;
+                    const descontoVal = employeeValuesById[func.funcID]?.descontoValue || 0;
                     const effectiveValue = employeeValuesById[func.funcID]?.effective || 0;
                     const unpaidValue = employeeValuesById[func.funcID]?.unpaid || 0;
                     return (
@@ -2145,6 +2110,19 @@ export default function FinanceiroDiario() {
                             placeholder={isAbsoluteRole ? 'Valor absoluto' : '0.00'}
                           />
                         </td>
+                        <td>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={entry.desconto}
+                            onChange={(e) =>
+                              handleGorjetaChange(func.funcID, 'desconto', e.target.value)
+                            }
+                            className={styles.smallInput}
+                            placeholder="0.00"
+                          />
+                        </td>
                         <td className={styles.muted}>{currency(calculatedValue)}</td>
                         <td>
                           <div className={styles.highlight}>{currency(effectiveValue)}</div>
@@ -2154,6 +2132,11 @@ export default function FinanceiroDiario() {
                           <div className={styles.metaText}>
                             Diretas: {currency(directEffectiveValue)}
                           </div>
+                          {descontoVal > 0 && (
+                            <div className={styles.metaText} style={{ color: '#e74c3c' }}>
+                              Desconto: -{currency(descontoVal)}
+                            </div>
+                          )}
                         </td>
                         <td className={styles.muted}>{currency(unpaidValue)}</td>
                       </tr>
@@ -2289,6 +2272,19 @@ export default function FinanceiroDiario() {
           </div>
         </section>
 
+        {/* Bottom Save Button */}
+        <div style={{ margin: '16px 0' }}>
+          <button
+            type="button"
+            className={styles.btnPrimary}
+            onClick={handleSalvarFinanceiro}
+            disabled={snapshotLoading || computeLoading || !restaurantId}
+            style={{ width: '100%', padding: '14px 24px', fontSize: 16, fontWeight: 700 }}
+          >
+            {snapshotLoading ? 'Salvando...' : computeLoading ? 'Calculando...' : 'Salvar dia'}
+          </button>
+        </div>
+
         <section className={styles.section}>
           <div className={styles.sectionHeader}>
             <div>
@@ -2351,33 +2347,33 @@ export default function FinanceiroDiario() {
                 <strong className={styles.summaryValue}>{currency(parseFloat(fechoFaturamento) || 0)}</strong>
               </div>
               <div className={styles.summaryCard}>
+                <span className={styles.summaryLabel}>Multibanco</span>
+                <strong className={styles.summaryValue}>{currency(parseFloat(fechoMultibanco) || 0)}</strong>
+              </div>
+              <div className={styles.summaryCard}>
                 <span className={styles.summaryLabel}>Dinheiro a Depositar</span>
                 <strong className={styles.summaryValue}>{currency(parseFloat(fechoDinheiro) || 0)}</strong>
-                <span className={styles.summaryMeta}>Linhas marcadas: {currency(fechoDepositSelectedTotal)}</span>
+              </div>
+              <div className={styles.summaryCard}>
+                <span className={styles.summaryLabel}>Valor em Espécie</span>
+                <strong className={styles.summaryValue}>{currency(valorTotalEspecie)}</strong>
               </div>
               {fechoItemsTotal > 0 && (
                 <div className={styles.summaryCard}>
-                  <span className={styles.summaryLabel}>Total Itens</span>
+                  <span className={styles.summaryLabel}>Total Canais</span>
                   <strong className={styles.summaryValue}>{currency(fechoItemsTotal)}</strong>
                 </div>
               )}
-              {parseFloat(fechoFaturamento) > 0 && (
-                <div className={styles.summaryCard}>
-                  <span className={styles.summaryLabel}>Saldo p/ Fechar</span>
-                  <strong className={styles.summaryValue}>{currency(Math.abs(fechoRemainingBalance))}</strong>
-                  <span className={styles.summaryMeta}>
-                    {fechoRemainingBalance === 0
-                      ? 'Fechado'
-                      : fechoRemainingBalance > 0
-                        ? 'Falta alocar em linhas'
-                        : 'Linhas acima do faturamento'}
-                  </span>
-                </div>
-              )}
+              <div className={styles.summaryCard}>
+                <span className={styles.summaryLabel}>Sobra em Espécie</span>
+                <strong className={styles.summaryValue} style={{ color: sobraEmEspecie < 0 ? '#dc2626' : sobraEmEspecie === 0 ? '#166534' : '#854d0e' }}>
+                  {currency(sobraEmEspecie)}
+                </strong>
+              </div>
             </div>
           )}
 
-          {/* Valores gerais */}
+          {/* 1. Faturamento Global */}
           <div className={styles.inputRow}>
             <div className={styles.inputGroup}>
               <label>Faturamento Global (€)</label>
@@ -2393,6 +2389,29 @@ export default function FinanceiroDiario() {
                 placeholder="0.00"
               />
             </div>
+
+            {/* 2. Multibanco (manual) */}
+            <div className={styles.inputGroup}>
+              <label>Multibanco (€)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={fechoMultibanco}
+                onChange={(e) => {
+                  setFechoSuggestionSyncActive(false);
+                  setFechoMultibanco(e.target.value);
+                }}
+                placeholder="0.00"
+              />
+              <div className={styles.metaText} style={{ marginTop: 4 }}>
+                Valor manual — não se auto-ajusta.
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Valor a Depositar */}
+          <div className={styles.inputRow}>
             <div className={styles.inputGroup}>
               <label>Dinheiro a Depositar (€)</label>
               <input
@@ -2408,6 +2427,9 @@ export default function FinanceiroDiario() {
               />
               <div className={styles.metaText} style={{ marginTop: 6 }}>
                 Linhas marcadas para depósito: {currency(fechoDepositSelectedTotal)}
+                {sobraContaNoDeposito && sobraEmEspecie !== 0 && (
+                  <span> + Sobra: {currency(sobraEmEspecie)}</span>
+                )}
               </div>
               <button
                 type="button"
@@ -2418,47 +2440,33 @@ export default function FinanceiroDiario() {
                 Usar linhas marcadas
               </button>
             </div>
+
+            {/* 4. Valor Total em Espécie (read-only) */}
+            <div className={styles.inputGroup}>
+              <label>Valor Total em Espécie (€)</label>
+              <input
+                type="text"
+                value={currency(valorTotalEspecie)}
+                readOnly
+                disabled
+                style={{ background: '#f3f4f6', cursor: 'not-allowed' }}
+              />
+              <div className={styles.metaText} style={{ marginTop: 4 }}>
+                = Faturamento − Multibanco (calculado)
+              </div>
+            </div>
           </div>
 
+          {/* 5. Canais / Quebras */}
           <div className={styles.notice} style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div>
-                <strong>Fecho por linhas:</strong> Total {currency(fechoItemsTotal)} · Saldo{' '}
-                {currency(Math.abs(fechoRemainingBalance))}
-                <div className={styles.metaText} style={{ marginTop: 4 }}>
-                  {fechoRemainingBalance === 0
-                    ? 'Tudo distribuído.'
-                    : fechoRemainingBalance > 0
-                      ? 'Ainda falta distribuir em linhas.'
-                      : 'As linhas passaram do faturamento global.'}
-                </div>
+            <div>
+              <strong>Canais / Quebras:</strong> Total {currency(fechoItemsTotal)}
+              <div className={styles.metaText} style={{ marginTop: 4 }}>
+                Adicione as linhas de destino do dinheiro em espécie (gorjetas, pagamentos, etc.).
               </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  className={styles.btnSecondary}
-                  onClick={activateFechoAutoBalance}
-                >
-                  {fechoAutoBalanceActive ? 'Rebalancear Multibanco' : 'Auto-balancear Multibanco'}
-                </button>
-                {fechoAutoBalanceActive && (
-                  <button
-                    type="button"
-                    className={styles.btnSecondary}
-                    onClick={() => setFechoAutoBalanceActive(false)}
-                  >
-                    Parar auto-balance
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className={styles.metaText} style={{ marginTop: 8 }}>
-              Como usar: 1) ajuste as linhas, 2) marque as que entram no depósito, 3) clique em
-              "Usar linhas marcadas". O auto-balance do Multibanco apenas ajusta o valor da linha.
             </div>
           </div>
 
-          {/* Quebras / Canais */}
           <div style={{ marginBottom: 16 }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 15, color: '#374151', fontWeight: 700 }}>Quebras / Canais</h3>
             {fechoItens.length > 0 ? (
@@ -2538,8 +2546,40 @@ export default function FinanceiroDiario() {
               + Adicionar linha
             </button>
           </div>
-            
-          {/* Observaçoes */}
+
+          {/* 6. Sobra em Espécie (read-only + deposit toggle) */}
+          <div className={styles.inputGroup} style={{ marginBottom: 16 }}>
+            <label>Sobra em Espécie (€)</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input
+                type="text"
+                value={currency(sobraEmEspecie)}
+                readOnly
+                disabled
+                style={{
+                  background: '#f3f4f6',
+                  cursor: 'not-allowed',
+                  color: sobraEmEspecie < 0 ? '#dc2626' : sobraEmEspecie === 0 ? '#166534' : '#854d0e',
+                  fontWeight: 700,
+                  textAlign: 'center',
+                  flex: 1,
+                }}
+              />
+              <button
+                type="button"
+                className={sobraContaNoDeposito ? styles.btnPrimary : styles.btnSecondary}
+                style={{ padding: '6px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
+                onClick={() => setSobraContaNoDeposito((v) => !v)}
+              >
+                {sobraContaNoDeposito ? 'Conta no depósito' : 'Ignorar'}
+              </button>
+            </div>
+            <div className={styles.metaText} style={{ marginTop: 4 }}>
+              = Valor em Espécie − Total Canais (calculado)
+            </div>
+          </div>
+
+          {/* Observações */}
           <div className={styles.inputGroup} style={{ marginBottom: 16 }}>
               <label>Notas</label>
               <textarea

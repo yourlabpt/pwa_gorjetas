@@ -113,6 +113,7 @@ model Restaurante {
   fechos_financeiros        FechoFinanceiro[]
   regras_distribuicao       RegraDistribuicao[]
   presencas_funcionarios    FuncionarioPresencaDiaria[]
+  acertos_final             AcertoFinalPeriodo[]
 
   @@map("restaurantes")
 }
@@ -140,6 +141,7 @@ model Funcionario {
   acertos_funcionario       AcertoFuncionario[]
   faturamento_distribuicoes FaturamentoDiarioDistribuicao[]
   presencas                 FuncionarioPresencaDiaria[]
+  acertos_final_entries     AcertoFinalEntry[]
 
   @@index([restID, funcao])
   @@index([restID])
@@ -309,6 +311,7 @@ model FaturamentoDiarioDistribuicao {
   valor_direto  Decimal? @db.Decimal(12, 2)
   valor_teorico Decimal? @db.Decimal(12, 2)
   valor_pago    Decimal  @db.Decimal(12, 2)
+  desconto      Decimal? @db.Decimal(12, 2)
   criadoEm      DateTime @default(now())
   atualizadoEm  DateTime @updatedAt
 
@@ -407,14 +410,17 @@ model FechoFinanceiroTemplate {
 }
 
 model FechoFinanceiro {
-  id                   Int      @id @default(autoincrement())
-  restID               Int
-  data                 DateTime @db.Date
-  faturamento_global   Decimal  @default(0) @db.Decimal(12, 2)
-  dinheiro_a_depositar Decimal  @default(0) @db.Decimal(12, 2)
-  notas                String?
-  criadoEm             DateTime @default(now())
-  atualizadoEm         DateTime @updatedAt
+  id                      Int      @id @default(autoincrement())
+  restID                  Int
+  data                    DateTime @db.Date
+  faturamento_global      Decimal  @default(0) @db.Decimal(12, 2)
+  dinheiro_a_depositar    Decimal  @default(0) @db.Decimal(12, 2)
+  valor_multibanco        Decimal? @db.Decimal(12, 2)
+  sobra_especie           Decimal? @db.Decimal(12, 2)
+  sobra_conta_no_deposito Boolean? @default(false)
+  notas                   String?
+  criadoEm                DateTime @default(now())
+  atualizadoEm            DateTime @updatedAt
 
   restaurante Restaurante           @relation(fields: [restID], references: [restID], onDelete: Cascade)
   itens       FechoFinanceiroItem[]
@@ -466,4 +472,43 @@ model RegraDistribuicao {
   @@index([restID])
   @@index([restID, ativo])
   @@map("regras_distribuicao")
+}
+
+// ===== Acerto Final Persistence =====
+
+model AcertoFinalPeriodo {
+  id             Int      @id @default(autoincrement())
+  restID         Int
+  periodo_inicio DateTime @db.Date
+  periodo_fim    DateTime @db.Date
+  criadoEm       DateTime @default(now())
+  atualizadoEm   DateTime @updatedAt
+
+  restaurante Restaurante        @relation(fields: [restID], references: [restID], onDelete: Cascade)
+  entries     AcertoFinalEntry[]
+
+  @@unique([restID, periodo_inicio, periodo_fim])
+  @@index([restID])
+  @@map("acerto_final_periodo")
+}
+
+model AcertoFinalEntry {
+  id                      Int      @id @default(autoincrement())
+  acerto_final_periodo_id Int
+  funcID                  Int
+  bucket                  String
+  valor_sugerido          Decimal  @db.Decimal(12, 2)
+  valor_manual            Decimal  @db.Decimal(12, 2)
+  is_manual_override      Boolean  @default(false)
+  notas                   String?
+  criadoEm                DateTime @default(now())
+  atualizadoEm            DateTime @updatedAt
+
+  acerto_final_periodo AcertoFinalPeriodo @relation(fields: [acerto_final_periodo_id], references: [id], onDelete: Cascade)
+  funcionario          Funcionario        @relation(fields: [funcID], references: [funcID], onDelete: Cascade)
+
+  @@unique([acerto_final_periodo_id, funcID])
+  @@index([acerto_final_periodo_id])
+  @@index([funcID])
+  @@map("acerto_final_entry")
 }

@@ -742,3 +742,57 @@
     width: 100%;
   }
 }
+
+/* ===== Sticky Summary Bar (Acerto Final) ===== */
+
+.stickyBar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 10px 16px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  margin-bottom: 16px;
+}
+
+.stickyBarItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stickyBarItem strong {
+  font-size: 15px;
+  color: #1a202c;
+  white-space: nowrap;
+}
+
+.stickyBarLabel {
+  font-size: 11px;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .stickyBar {
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    padding: 8px 12px;
+  }
+
+  .stickyBarItem strong {
+    font-size: 13px;
+  }
+
+  .stickyBarLabel {
+    font-size: 10px;
+  }
+}

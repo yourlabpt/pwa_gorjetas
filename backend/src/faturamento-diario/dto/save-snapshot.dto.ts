@@ -27,6 +27,11 @@ class StaffEntryDto {
   @IsNumber()
   @Min(0)
   valor_pago: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  desconto?: number;
 }
 
 class PresencaEntryDto {

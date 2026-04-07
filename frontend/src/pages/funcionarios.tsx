@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { apiClient } from '../lib/api';
@@ -52,7 +52,9 @@ export default function Funcionarios() {
     restIDs: [] as string[],
   });
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editingFuncaoName, setEditingFuncaoName] = useState<string>(''); // Store name+funcao for finding all instances
+  const [editingFuncaoName, setEditingFuncaoName] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'funcao'>('name'); // Store name+funcao for finding all instances
   const displayFuncao = (funcao: string) => {
     const role = (funcao || '').toLowerCase();
     if (role === 'garcom' || role === 'staff') return 'Staff';
@@ -385,6 +387,21 @@ export default function Funcionarios() {
     });
   };
 
+  const filteredFuncionarios = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    let list = funcionarios;
+    if (query) {
+      list = list.filter((f) => f.name.toLowerCase().includes(query));
+    }
+    return [...list].sort((a, b) => {
+      if (sortBy === 'funcao') {
+        const cmp = a.funcao.localeCompare(b.funcao, 'pt-PT', { sensitivity: 'base' });
+        if (cmp !== 0) return cmp;
+      }
+      return a.name.localeCompare(b.name, 'pt-PT', { sensitivity: 'base' });
+    });
+  }, [funcionarios, searchQuery, sortBy]);
+
   if (authorized === null) return <Layout><div className={styles.container}><p className={styles.muted}>Verificando permissões…</p></div></Layout>;
 
   return (
@@ -619,10 +636,31 @@ export default function Funcionarios() {
             </div>
           </div>
 
+          <div className={styles.filters} style={{ marginBottom: 12 }}>
+            <div className={styles.selectGroup}>
+              <label>Pesquisar</label>
+              <input
+                type="text"
+                placeholder="Nome do funcionário…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <div className={styles.selectGroup}>
+              <label>Ordenar por</label>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as 'name' | 'funcao')}>
+                <option value="name">Nome</option>
+                <option value="funcao">Função</option>
+              </select>
+            </div>
+          </div>
+
           {loading ? (
             <p className={styles.muted}>Carregando...</p>
           ) : funcionarios.length === 0 ? (
             <p className={styles.muted}>Nenhum funcionário cadastrado.</p>
+          ) : filteredFuncionarios.length === 0 ? (
+            <p className={styles.muted}>Nenhum funcionário encontrado para "{searchQuery}".</p>
           ) : (
             <div className={styles.tableWrapper}>
               <table className={styles.table}>
@@ -640,7 +678,7 @@ export default function Funcionarios() {
                   </tr>
                 </thead>
                 <tbody>
-                  {funcionarios.map((func) => {
+                  {filteredFuncionarios.map((func) => {
                     const missingData = getMissingEmployeeData(func);
                     return (
                       <tr key={func.funcID}>

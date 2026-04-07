@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { apiClient } from '../lib/api';
@@ -93,6 +93,24 @@ interface AggregatedEmployeeRow {
 }
 
 const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'GERENTE'];
+
+interface SavedAcertoEntry {
+  funcID: number;
+  bucket: string;
+  valor_sugerido: number;
+  valor_manual: number;
+  is_manual_override: boolean;
+  notas?: string | null;
+}
+
+interface SavedAcertoPeriodo {
+  id: number;
+  restID: number;
+  periodo_inicio: string;
+  periodo_fim: string;
+  entries: SavedAcertoEntry[];
+}
+
 const TODAY = new Date().toISOString().split('T')[0];
 const FIRST_DAY_OF_MONTH = new Date(
   new Date().getFullYear(),
@@ -116,7 +134,7 @@ const toRoleBucket = (roleName: string) => {
   const role = normalizeRole(roleName);
   if (role === 'staff' || role.includes('garcom')) return 'staff';
   if (role.includes('gestor') || role.includes('gerente')) return 'gerente';
-  if (role.includes('supervisor')) return 'supervisor';
+  if (role.includes('supervisor') || role.includes('chefe') || role.includes('turno')) return 'supervisor';
   if (role.includes('cozinha')) return 'cozinha';
   if (role === 'bar' || role.includes('bar')) return 'bar';
   if (role.includes('chamador')) return 'chamador';
@@ -272,6 +290,10 @@ export default function AcertoFinalPage() {
   const [formulaMultiplier, setFormulaMultiplier] = useState('1.00');
   const [formulaOffset, setFormulaOffset] = useState('0.00');
 
+  const [savedAcerto, setSavedAcerto] = useState<SavedAcertoPeriodo | null>(null);
+  const [saving, setSaving] = useState(false);
+  const prevSeedRef = useRef<string>('');
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -304,19 +326,22 @@ export default function AcertoFinalPage() {
       setLoading(true);
       setError('');
       setInfo('');
+      prevSeedRef.current = '';
 
       const effectiveFrom = fromDate || TODAY;
       const effectiveTo = toDate || effectiveFrom;
 
-      const [funcRes, regrasRes, snapshotsRes] = await Promise.all([
+      const [funcRes, regrasRes, snapshotsRes, savedRes] = await Promise.all([
         apiClient.getFuncionarios(restID, true),
         apiClient.getRegrasDistribuicao(restID),
         apiClient.getFinanceiroSnapshotRange(restID, effectiveFrom, effectiveTo),
+        apiClient.getAcertoFinal(restID, effectiveFrom, effectiveTo).catch(() => ({ data: null })),
       ]);
 
       setFuncionarios((funcRes.data || []) as Funcionario[]);
       setRegras(((regrasRes.data || []) as RegraDistribuicao[]).filter((rule) => rule.ativo !== false));
       setSnapshots((snapshotsRes.data || []) as SnapshotDay[]);
+      setSavedAcerto((savedRes.data || null) as SavedAcertoPeriodo | null);
     } catch (err: any) {
       const backendMessage = err?.response?.data?.message;
       const normalizedMessage = Array.isArray(backendMessage)
@@ -547,12 +572,32 @@ export default function AcertoFinalPage() {
   }, [aggregatedRows.length, fromDate, regras, restID, snapshots, toDate]);
 
   useEffect(() => {
+    // Only reset inputs when underlying data changes (new period loaded)
+    if (prevSeedRef.current === aggregatedSeed && aggregatedRows.length > 0) {
+      return;
+    }
+    prevSeedRef.current = aggregatedSeed;
+
     const nextInputs: Record<number, string> = {};
     aggregatedRows.forEach((row) => {
-      nextInputs[row.funcID] = row.sugeridoAcerto.toFixed(2);
+      nextInputs[row.funcID] = '0.00';
     });
+
+    // Hydrate from saved acerto
+    if (savedAcerto?.entries?.length) {
+      const savedByFuncID = new Map(
+        savedAcerto.entries.map((e) => [e.funcID, e]),
+      );
+      aggregatedRows.forEach((row) => {
+        const saved = savedByFuncID.get(row.funcID);
+        if (saved) {
+          nextInputs[row.funcID] = saved.valor_manual.toFixed(2);
+        }
+      });
+    }
+
     setAcertoInputs(nextInputs);
-  }, [aggregatedSeed, aggregatedRows]);
+  }, [aggregatedSeed, aggregatedRows, savedAcerto]);
 
   const groupedRows = useMemo(() => {
     return orderedBuckets
@@ -761,6 +806,50 @@ export default function AcertoFinalPage() {
     setTimeout(() => setInfo(''), 2500);
   };
 
+  const handleSaveAcerto = async () => {
+    if (!restID) return;
+
+    const effectiveFrom = fromDate || TODAY;
+    const effectiveTo = toDate || effectiveFrom;
+
+    try {
+      setSaving(true);
+      setError('');
+
+      const entries = aggregatedRows.map((row) => {
+        const manualValue = round2(parseInputValue(acertoInputs[row.funcID]));
+        const suggestedValue = round2(row.sugeridoAcerto);
+        const isOverride = Math.abs(manualValue - suggestedValue) > 0.005;
+
+        return {
+          funcID: row.funcID,
+          bucket: row.bucket,
+          valor_sugerido: suggestedValue,
+          valor_manual: manualValue,
+          is_manual_override: isOverride,
+        };
+      });
+
+      const result = await apiClient.saveAcertoFinal(restID, {
+        periodo_inicio: effectiveFrom,
+        periodo_fim: effectiveTo,
+        entries,
+      });
+
+      setSavedAcerto((result.data || null) as SavedAcertoPeriodo | null);
+      setInfo('Acerto final guardado com sucesso.');
+      setTimeout(() => setInfo(''), 3000);
+    } catch (err: any) {
+      const backendMessage = err?.response?.data?.message;
+      const normalizedMessage = Array.isArray(backendMessage)
+        ? backendMessage.join(' | ')
+        : backendMessage;
+      setError(normalizedMessage || 'Erro ao guardar o acerto final.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const hasNegativeBalance =
     calculations.remainingBySource.TIP_POOL < 0 ||
     calculations.remainingBySource.FINANCEIRO < 0 ||
@@ -834,6 +923,49 @@ export default function AcertoFinalPage() {
           <div className={styles.info}>
             Nenhum snapshot encontrado no período selecionado. Salve os dias no Financeiro Diário
             antes de fechar o período.
+          </div>
+        )}
+
+        {snapshots.length > 0 && (
+          <div className={styles.stickyBar}>
+            <div className={styles.stickyBarItem}>
+              <span className={styles.stickyBarLabel}>A distribuir</span>
+              <strong>{currency(calculations.totalAcumulado)}</strong>
+            </div>
+            <div className={styles.stickyBarItem}>
+              <span className={styles.stickyBarLabel}>Distribuído</span>
+              <strong>{currency(calculations.totalAcerto)}</strong>
+            </div>
+            <div className={styles.stickyBarItem}>
+              <span className={styles.stickyBarLabel}>Disponível</span>
+              <strong
+                style={
+                  round2(calculations.totalAcumulado - calculations.totalAcerto) < 0
+                    ? { color: '#e74c3c' }
+                    : undefined
+                }
+              >
+                {currency(round2(calculations.totalAcumulado - calculations.totalAcerto))}
+              </strong>
+            </div>
+            <button
+              type="button"
+              className={styles.btnSecondary}
+              onClick={resetToSuggested}
+              disabled={loading || !restID}
+              style={{ marginLeft: 'auto', padding: '6px 16px' }}
+            >
+              Distribuir Automático
+            </button>
+            <button
+              type="button"
+              className={styles.btnSuccess}
+              onClick={handleSaveAcerto}
+              disabled={saving || loading || !restID}
+              style={{ padding: '6px 16px' }}
+            >
+              {saving ? 'Salvando...' : 'Salvar'}
+            </button>
           </div>
         )}
 
@@ -1020,12 +1152,10 @@ export default function AcertoFinalPage() {
                         <th>Acumulado período</th>
                         <th>Já recebido (diário)</th>
                         <th>Valor final acertado</th>
-                        <th>Diferença</th>
                       </tr>
                     </thead>
                     <tbody>
                       {group.rows.map((row) => {
-                        const delta = round2(row.currentAcerto - row.acumuladoPeriodo);
                         return (
                           <tr key={row.funcID}>
                             <td>
@@ -1052,13 +1182,6 @@ export default function AcertoFinalPage() {
                                 onChange={(e) => handleAcertoChange(row.funcID, e.target.value)}
                               />
                             </td>
-                            <td
-                              className={
-                                delta >= 0 ? styles.highlight : styles.muted
-                              }
-                            >
-                              {currency(delta)}
-                            </td>
                           </tr>
                         );
                       })}
@@ -1070,7 +1193,6 @@ export default function AcertoFinalPage() {
                         <th>{currency(totals.acumulado)}</th>
                         <th>{currency(totals.recebidoDiario)}</th>
                         <th>{currency(totals.acertoAtual)}</th>
-                        <th>{currency(round2(totals.acertoAtual - totals.acumulado))}</th>
                       </tr>
                     </tfoot>
                   </table>

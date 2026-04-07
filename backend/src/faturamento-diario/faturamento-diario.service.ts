@@ -49,7 +49,7 @@ export class FaturamentoDiarioService {
     const role = this.normalizeRole(roleName);
     if (role === 'staff' || role.includes('garcom')) return 'staff';
     if (role.includes('gestor') || role.includes('gerente')) return 'gerente';
-    if (role.includes('supervisor')) return 'supervisor';
+    if (role.includes('supervisor') || role.includes('chefe') || role.includes('turno')) return 'supervisor';
     if (role.includes('cozinha')) return 'cozinha';
     if (role === 'bar' || role.includes('bar')) return 'bar';
     if (role.includes('chamador')) return 'chamador';
@@ -99,6 +99,7 @@ export class FaturamentoDiarioService {
       valor_direto: Prisma.Decimal | null;
       valor_teorico: Prisma.Decimal | null;
       valor_pago: Prisma.Decimal;
+      desconto?: Prisma.Decimal | null;
     }>,
   ) {
     if (!faturamento && distribRows.length === 0) {
@@ -128,7 +129,6 @@ export class FaturamentoDiarioService {
       staffInputs.map((entry) => [entry.funcID, entry]),
     );
     const staffDirectTipPoolTotal = funcionariosAtivos.reduce((sum, func) => {
-      if (!this.isStaffRole(func.funcao)) return sum;
       const input = staffInputByFuncID.get(func.funcID);
       return sum + (input?.valor_direto || 0);
     }, 0);
@@ -177,6 +177,7 @@ export class FaturamentoDiarioService {
         valor_direto: number;
         valor_teorico: number;
         valor_pago: number;
+        desconto: number;
         fromComputation: boolean;
       }
     >();
@@ -201,6 +202,7 @@ export class FaturamentoDiarioService {
           valor_direto: staffInput?.valor_direto || 0,
           valor_teorico: 0,
           valor_pago: 0,
+          desconto: 0,
           fromComputation: true,
         });
       }
@@ -233,6 +235,7 @@ export class FaturamentoDiarioService {
           valor_direto: 0,
           valor_teorico: 0,
           valor_pago: 0,
+          desconto: 0,
           fromComputation: false,
         });
       }
@@ -243,12 +246,15 @@ export class FaturamentoDiarioService {
       const storedDirect =
         row.valor_direto != null ? Number(row.valor_direto.toNumber()) : null;
       const storedPaid = Number(row.valor_pago.toNumber());
+      const storedDesconto =
+        row.desconto != null ? Number(row.desconto.toNumber()) : 0;
       const hasStoredInput = (storedPool || 0) > 0 || (storedDirect || 0) > 0;
       const shouldApplyStoredAmounts =
         !current.fromComputation || hasStoredInput || storedPaid > 0;
 
       if (storedPool != null) current.valor_pool = storedPool;
       if (storedDirect != null) current.valor_direto = storedDirect;
+      current.desconto = storedDesconto;
       if (row.valor_teorico != null && shouldApplyStoredAmounts) {
         current.valor_teorico = Number(row.valor_teorico.toNumber());
       }
@@ -269,6 +275,7 @@ export class FaturamentoDiarioService {
       valor_direto: entry.valor_direto || 0,
       valor_teorico: entry.valor_teorico || 0,
       valor_pago: entry.valor_pago || 0,
+      desconto: entry.desconto || 0,
       valor_nao_pago: Math.max((entry.valor_teorico || 0) - (entry.valor_pago || 0), 0),
     }));
   }
@@ -644,6 +651,7 @@ export class FaturamentoDiarioService {
             valor_pool: s.valor_pool || 0,
             valor_direto: s.valor_direto || 0,
             valor_pago: s.valor_pago || 0,
+            desconto: s.desconto ?? 0,
           },
         ]),
       );
@@ -674,6 +682,7 @@ export class FaturamentoDiarioService {
           valor_direto: number | null;
           valor_teorico: number;
           valor_pago: number;
+          desconto: number | null;
           fromComputation: boolean;
         }
       >();
@@ -696,6 +705,7 @@ export class FaturamentoDiarioService {
             valor_direto: staffLegacy?.valor_direto ?? null,
             valor_teorico: 0,
             valor_pago: 0,
+            desconto: staffLegacy?.desconto ?? null,
             fromComputation: true,
           });
         }
@@ -724,6 +734,7 @@ export class FaturamentoDiarioService {
             valor_direto: null,
             valor_teorico: 0,
             valor_pago: 0,
+            desconto: null,
             fromComputation: false,
           });
         }
@@ -738,6 +749,7 @@ export class FaturamentoDiarioService {
 
         current.valor_pool = staffEntry.valor_pool ?? current.valor_pool ?? 0;
         current.valor_direto = staffEntry.valor_direto ?? current.valor_direto ?? 0;
+        current.desconto = staffEntry.desconto ?? current.desconto ?? 0;
         if (shouldApplyManualPaid) {
           current.valor_pago = staffEntry.valor_pago ?? current.valor_pago;
         }
@@ -760,6 +772,10 @@ export class FaturamentoDiarioService {
               : new Prisma.Decimal(entry.valor_direto),
           valor_teorico: new Prisma.Decimal(entry.valor_teorico),
           valor_pago: new Prisma.Decimal(entry.valor_pago),
+          desconto:
+            entry.desconto == null
+              ? null
+              : new Prisma.Decimal(entry.desconto),
         });
       });
 

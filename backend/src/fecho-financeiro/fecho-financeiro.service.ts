@@ -86,6 +86,9 @@ export class FechoFinanceiroService {
       data: data.toISOString().slice(0, 10),
       faturamento_global: 0,
       dinheiro_a_depositar: 0,
+      valor_multibanco: null,
+      sobra_especie: null,
+      sobra_conta_no_deposito: false,
       notas: null,
       itens: templates.map((t) => ({
         id: null,
@@ -108,6 +111,9 @@ export class FechoFinanceiroService {
       update: {
         faturamento_global: dto.faturamento_global ?? 0,
         dinheiro_a_depositar: dto.dinheiro_a_depositar ?? 0,
+        valor_multibanco: dto.valor_multibanco ?? null,
+        sobra_especie: dto.sobra_especie ?? null,
+        sobra_conta_no_deposito: dto.sobra_conta_no_deposito ?? false,
         notas: dto.notas ?? null,
       },
       create: {
@@ -115,6 +121,9 @@ export class FechoFinanceiroService {
         data,
         faturamento_global: dto.faturamento_global ?? 0,
         dinheiro_a_depositar: dto.dinheiro_a_depositar ?? 0,
+        valor_multibanco: dto.valor_multibanco ?? null,
+        sobra_especie: dto.sobra_especie ?? null,
+        sobra_conta_no_deposito: dto.sobra_conta_no_deposito ?? false,
         notas: dto.notas ?? null,
       },
     });
@@ -168,6 +177,9 @@ export class FechoFinanceiroService {
       data: fecho.data instanceof Date ? fecho.data.toISOString().slice(0, 10) : fecho.data,
       faturamento_global: parseFloat(fecho.faturamento_global?.toString() ?? '0'),
       dinheiro_a_depositar: parseFloat(fecho.dinheiro_a_depositar?.toString() ?? '0'),
+      valor_multibanco: fecho.valor_multibanco != null ? parseFloat(fecho.valor_multibanco.toString()) : null,
+      sobra_especie: fecho.sobra_especie != null ? parseFloat(fecho.sobra_especie.toString()) : null,
+      sobra_conta_no_deposito: fecho.sobra_conta_no_deposito ?? false,
       notas: fecho.notas ?? null,
       itens: (fecho.itens ?? []).map((item: any) => ({
         id: item.id,

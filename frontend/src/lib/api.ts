@@ -255,6 +255,25 @@ class ApiClient {
     return this.client.put(`/acerto-periodo/${id}/marcar-pago`, {});
   }
 
+  // Acerto Final (period settlement persistence)
+  async saveAcertoFinal(restID: number, data: any) {
+    return this.client.post('/acerto-final/save', data, {
+      params: { restID },
+    });
+  }
+
+  async getAcertoFinal(restID: number, from: string, to: string) {
+    return this.client.get('/acerto-final', {
+      params: { restID, from, to },
+    });
+  }
+
+  async deleteAcertoFinal(id: number, restID: number) {
+    return this.client.delete(`/acerto-final/${id}`, {
+      params: { restID },
+    });
+  }
+
   // Financeiro Snapshot
   async saveFinanceiroSnapshot(restID: number, data: any) {
     return this.client.post('/faturamento-diario/snapshot', data, {

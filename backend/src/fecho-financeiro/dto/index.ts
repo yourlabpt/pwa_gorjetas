@@ -37,7 +37,6 @@ export class FechoItemDto {
   label: string;
 
   @IsNumber()
-  @Min(0)
   valor: number;
 
   @IsOptional()
@@ -58,6 +57,18 @@ export class SaveFechoDto {
   @IsNumber()
   @Min(0)
   dinheiro_a_depositar?: number;
+
+  @IsOptional()
+  @IsNumber()
+  valor_multibanco?: number;
+
+  @IsOptional()
+  @IsNumber()
+  sobra_especie?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  sobra_conta_no_deposito?: boolean;
 
   @IsOptional()
   @IsString()
