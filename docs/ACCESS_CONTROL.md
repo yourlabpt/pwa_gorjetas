@@ -21,7 +21,8 @@ Cada página do frontend define a constante `ALLOWED_ROLES` no topo do ficheiro,
 | Relatórios | `/relatorios` | `SUPER_ADMIN`, `ADMIN`, `SUPERVISOR`, `GERENTE` |
 | Configuração | `/configuracao` | `SUPER_ADMIN`, `ADMIN`, `SUPERVISOR`, `GERENTE` |
 | Configuração de Acerto | `/configuracao/acerto` | `SUPER_ADMIN`, `ADMIN`, `SUPERVISOR`, `GERENTE` |
-| Configuração de Gorjetas | `/configuracao-gorjetas` | `SUPER_ADMIN`, `ADMIN`, `SUPERVISOR`, `GERENTE` |
+| Configuração de Acerto | `/configuracao/acerto` | `SUPER_ADMIN`, `ADMIN`, `SUPERVISOR`, `GERENTE` |
+| Configuração de Gorjetas | `/configuracao-gorjetas` | legado, redireciona para `/restaurantes` |
 | Restaurantes | `/restaurantes` | `SUPER_ADMIN`, `ADMIN`, `SUPERVISOR` |
 | Usuários | `/usuarios` | `SUPER_ADMIN`, `ADMIN` |
 

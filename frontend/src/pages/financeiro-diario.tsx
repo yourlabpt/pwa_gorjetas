@@ -1,5 +1,5 @@
 ﻿'use client';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { apiClient } from '../lib/api';
@@ -141,19 +141,29 @@ const normalizeFechoLabel = (label: string) =>
     .trim()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
-const isStaffRole = (funcao: string) =>
-  normalizeRole(funcao) === 'staff' || normalizeRole(funcao).includes('garcom');
-const displayRole = (funcao: string) =>
-  isStaffRole(funcao) ? 'Staff' : funcao || '—';
-const toRoleBucket = (roleName: string) => {
-  const role = normalizeRole(roleName);
-  if (role === 'staff' || role.includes('garcom')) return 'staff';
-  if (role.includes('gestor') || role.includes('gerente')) return 'gerente';
-  if (role.includes('supervisor') || role.includes('chefe de turno') || role.includes('chefe turno')) return 'supervisor';
-  if (role.includes('cozinha')) return 'cozinha';
-  if (role === 'bar' || role.includes('bar') || role.includes('balcao')) return 'bar';
-  if (role.includes('chamador')) return 'chamador';
-  return role || 'outros';
+const isStaffRole = (_funcao: string) => false; // Legacy — all roles handled generically
+const displayRole = (funcao: string) => funcao || '—';
+const toRoleBucket = (roleName: string) => normalizeRole(roleName) || 'outros';
+const ROLE_TITLE_LOWERCASE_WORDS = new Set(['de', 'da', 'do', 'dos', 'das', 'e']);
+const toRoleSectionTitle = (bucket: string) => {
+  const normalized = normalizeRole(bucket).replace(/_/g, ' ').trim();
+  if (!normalized) return 'Outros';
+  return normalized
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word, index) =>
+      word
+        .split('-')
+        .map((part, partIndex) => {
+          if (!part) return part;
+          if (index > 0 && partIndex === 0 && ROLE_TITLE_LOWERCASE_WORDS.has(part)) {
+            return part;
+          }
+          return part.charAt(0).toUpperCase() + part.slice(1);
+        })
+        .join('-'),
+    )
+    .join(' ');
 };
 const round2 = (value: number) => Math.round(value * 100) / 100;
 const toFechoItemAmount = (value: number | '' | null | undefined) =>
@@ -203,6 +213,10 @@ const splitAmount = (total: number, parts: number): number[] => {
   return values;
 };
 
+const FORM_SESSION_PREFIX = 'fin-diario-form';
+const buildFormSessionKey = (restId: number, date: string) =>
+  `${FORM_SESSION_PREFIX}:${restId}:${date}`;
+
 const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'GERENTE'];
 const TODAY = new Date().toISOString().split('T')[0];
 
@@ -230,6 +244,9 @@ export default function FinanceiroDiario() {
   const [gorjetaInputs, setGorjetaInputs] = useState<Record<number, GorjetaEntry>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const formDirtyRef = useRef(false);
+  const suppressNextAutoPersistRef = useRef(false);
+  const [formDirty, setFormDirty] = useState(false);
 
   // ── Fecho Financeiro state ──────────────────────────────────────────────
   const [fechoData, setFechoData] = useState<FechoData | null>(null);
@@ -252,6 +269,55 @@ export default function FinanceiroDiario() {
   const [fechoMultibanco, setFechoMultibanco] = useState('');
   const [sobraContaNoDeposito, setSobraContaNoDeposito] = useState(false);
   // ────────────────────────────────────────────────────────────────────────
+
+  const persistDraft = useCallback(
+    (targetRestaurantId: number | null, targetDate: string) => {
+      if (!formDirtyRef.current || !targetRestaurantId || !targetDate) return;
+      try {
+        const key = buildFormSessionKey(targetRestaurantId, targetDate);
+        sessionStorage.setItem(key, JSON.stringify({ gorjetaInputs, faturamentoGlobal }));
+      } catch {}
+    },
+    [gorjetaInputs, faturamentoGlobal],
+  );
+
+  // ── Persist gorjeta form data to sessionStorage when user edits ─────────
+  useEffect(() => {
+    if (!formDirtyRef.current || !restaurantId || !selectedDate) return;
+    if (suppressNextAutoPersistRef.current) {
+      suppressNextAutoPersistRef.current = false;
+      return;
+    }
+    try {
+      const key = buildFormSessionKey(restaurantId, selectedDate);
+      sessionStorage.setItem(key, JSON.stringify({ gorjetaInputs, faturamentoGlobal }));
+    } catch {}
+  }, [restaurantId, selectedDate, gorjetaInputs, faturamentoGlobal]);
+  // ────────────────────────────────────────────────────────────────────────
+
+  const handleRestaurantSelectionChange = useCallback(
+    (nextRestaurantId: number | null) => {
+      persistDraft(restaurantId, selectedDate);
+      formDirtyRef.current = false;
+      setFormDirty(false);
+      setSnapshotLoaded(false);
+      suppressNextAutoPersistRef.current = true;
+      setRestaurantId(nextRestaurantId);
+    },
+    [persistDraft, restaurantId, selectedDate, setRestaurantId],
+  );
+
+  const handleDateSelectionChange = useCallback(
+    (nextDate: string) => {
+      persistDraft(restaurantId, selectedDate);
+      formDirtyRef.current = false;
+      setFormDirty(false);
+      setSnapshotLoaded(false);
+      suppressNextAutoPersistRef.current = true;
+      setSelectedDate(nextDate);
+    },
+    [persistDraft, restaurantId, selectedDate, setSelectedDate],
+  );
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -541,6 +607,8 @@ export default function FinanceiroDiario() {
     field: 'valor' | 'direta' | 'desconto',
     value: string,
   ) => {
+    formDirtyRef.current = true;
+    setFormDirty(true);
     setGorjetaInputs((prev) => ({
       ...prev,
       [funcID]: {
@@ -554,6 +622,8 @@ export default function FinanceiroDiario() {
   };
 
   const handlePresencaChange = (funcID: number, presente: boolean) => {
+    formDirtyRef.current = true;
+    setFormDirty(true);
     setGorjetaInputs((prev) => ({
       ...prev,
       [funcID]: {
@@ -712,9 +782,6 @@ export default function FinanceiroDiario() {
       return roleTotals[bucket];
     };
 
-    let staffPercentTotal = 0;
-    let staffPercentBasePointsTotal = 0;
-    let staffPercentAbsoluteTotal = 0;
     roleBreakdown.forEach((line) => {
       const bucket = toRoleBucket(line.role_name);
       const target = ensureRoleTotal(bucket);
@@ -728,14 +795,6 @@ export default function FinanceiroDiario() {
         target.paidFromFinanceiro += line.paid_amount || 0;
       } else if (line.payment_pool === 'ABSOLUTE_EXTERNAL') {
         target.paidExternal += line.paid_amount || 0;
-      }
-      if (bucket === 'staff' && line.calculation_type === 'PERCENT') {
-        staffPercentTotal += line.rate || 0;
-        if (line.percent_mode === 'BASE_PERCENT_POINTS') {
-          staffPercentBasePointsTotal += line.rate || 0;
-        } else {
-          staffPercentAbsoluteTotal += line.rate || 0;
-        }
       }
     });
 
@@ -758,6 +817,15 @@ export default function FinanceiroDiario() {
         employeePaidByEngine[row.funcionario.funcID] = directValue;
       }
     });
+
+    const resolveEmployeeBreakdownBucket = (line: EngineEmployeeBreakdown) => {
+      if (line.funcID != null) {
+        const employeeRole = employeeById.get(line.funcID)?.funcao;
+        const employeeBucket = toRoleBucket(employeeRole || '');
+        if (employeeBucket) return employeeBucket;
+      }
+      return toRoleBucket(line.role_name || line.role_bucket || '');
+    };
 
     employeeBreakdown.forEach((line) => {
       if (line.funcID == null) return;
@@ -787,14 +855,10 @@ export default function FinanceiroDiario() {
       }
 
       const paid = line.real_paid_value || 0;
+      const lineBucket = resolveEmployeeBreakdownBucket(line);
       employeeTotals[funcID].poolShare += paid;
       employeeTotals[funcID].total += paid;
-      if (line.role_bucket === 'gerente' || line.role_bucket === 'supervisor') {
-        employeeTotals[funcID].managerShare += paid;
-      }
-      if (line.role_bucket === 'cozinha') {
-        employeeTotals[funcID].kitchenShare += paid;
-      }
+
       employeePaidByEngine[funcID] = (employeePaidByEngine[funcID] || 0) + paid;
     });
 
@@ -810,7 +874,10 @@ export default function FinanceiroDiario() {
       >();
 
       employeeBreakdown
-        .filter((line) => line.funcID != null && line.role_bucket === bucket)
+        .filter(
+          (line) =>
+            line.funcID != null && resolveEmployeeBreakdownBucket(line) === bucket,
+        )
         .forEach((line) => {
           const funcID = line.funcID as number;
           const func = employeeById.get(funcID);
@@ -832,141 +899,24 @@ export default function FinanceiroDiario() {
       return Array.from(map.values());
     };
 
-    const gestorPerEmployee = buildBucketRows('gerente');
-    const supervisorPerEmployee = buildBucketRows('supervisor');
-    const chamadorFromEngine = buildBucketRows('chamador');
-    const chamadorMap = new Map(
-      chamadorFromEngine.map((item) => [item.funcionario.funcID, item]),
-    );
-    funcionarios.forEach((func) => {
-      if (toRoleBucket(func.funcao) !== 'chamador') return;
-      if (!absoluteExternalFuncIds.has(func.funcID)) return;
-      const directRaw = gorjetaInputs[func.funcID]?.direta ?? '';
-      const directValue = parseFloat(directRaw || '0') || 0;
-      const current = chamadorMap.get(func.funcID);
-      const effective = directRaw !== '' ? directValue : current?.real || 0;
-      if (!current) {
-        if (effective <= 0) return;
-        chamadorMap.set(func.funcID, {
-          funcionario: func,
-          teorico: effective,
-          real: effective,
-          unpaid: 0,
-        });
-        return;
-      }
 
-      chamadorMap.set(func.funcID, {
-        ...current,
-        teorico: effective,
-        real: effective,
-        unpaid: 0,
-      });
-    });
-    const chamadorPerEmployee = Array.from(chamadorMap.values());
-    const knownBuckets = new Set([
-      'staff',
-      'gerente',
-      'supervisor',
-      'cozinha',
-      'chamador',
-    ]);
-    const otherBuckets = Array.from(
+
+    // Build all role groups dynamically — no hardcoded known buckets
+    const allBucketsFromEngine = Array.from(
       new Set(
-        employeeBreakdown
-          .map((line) => line.role_bucket)
-          .filter((bucket) => !knownBuckets.has(bucket)),
+        employeeBreakdown.map((line) => resolveEmployeeBreakdownBucket(line)),
       ),
     );
-    const otherRoleGroups = otherBuckets.map((bucket) => ({
-      bucket,
-      label: bucket
-        .split('_')
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' '),
-      rows: buildBucketRows(bucket),
-    }));
+    const otherRoleGroups = allBucketsFromEngine
+      .map((bucket) => ({
+        bucket,
+        label: bucket
+          .split('_')
+          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+          .join(' '),
+        rows: buildBucketRows(bucket),
+      }));
 
-    const staffInputRows = dailyInputRows.filter((row) =>
-      isStaffRole(row.funcionario.funcao),
-    );
-
-    const staffTotalWithDirect = staffInputRows.reduce(
-      (sum, row) => sum + (employeeTotals[row.funcionario.funcID]?.total || 0),
-      0,
-    );
-    const staffDirectTotal = staffInputRows.reduce(
-      (sum, row) => sum + row.directValue,
-      0,
-    );
-
-    const staffTotals = roleTotals.staff || {
-      theoretical: 0,
-      paid: 0,
-      unpaid: 0,
-      paidFromTipPool: 0,
-      paidFromFinanceiro: 0,
-      paidExternal: 0,
-    };
-    const gestorTotals = roleTotals.gerente || {
-      theoretical: 0,
-      paid: 0,
-      unpaid: 0,
-      paidFromTipPool: 0,
-      paidFromFinanceiro: 0,
-      paidExternal: 0,
-    };
-    const supervisorTotals = roleTotals.supervisor || {
-      theoretical: 0,
-      paid: 0,
-      unpaid: 0,
-      paidFromTipPool: 0,
-      paidFromFinanceiro: 0,
-      paidExternal: 0,
-    };
-    const cozinhaTotals = roleTotals.cozinha || {
-      theoretical: 0,
-      paid: 0,
-      unpaid: 0,
-      paidFromTipPool: 0,
-      paidFromFinanceiro: 0,
-      paidExternal: 0,
-    };
-    const chamadorTotals = roleTotals.chamador || {
-      theoretical: 0,
-      paid: 0,
-      unpaid: 0,
-      paidFromTipPool: 0,
-      paidFromFinanceiro: 0,
-      paidExternal: 0,
-    };
-    const barTotals = roleTotals.bar || {
-      theoretical: 0,
-      paid: 0,
-      unpaid: 0,
-      paidFromTipPool: 0,
-      paidFromFinanceiro: 0,
-      paidExternal: 0,
-    };
-    const chamadorTotalFromRows = chamadorPerEmployee.reduce(
-      (sum, row) => sum + row.real,
-      0,
-    );
-
-    const managerPaidTotal = gestorTotals.paid + supervisorTotals.paid;
-    const managerPaidFromTipPool =
-      gestorTotals.paidFromTipPool + supervisorTotals.paidFromTipPool;
-    const managerPaidFromFinanceiro =
-      gestorTotals.paidFromFinanceiro + supervisorTotals.paidFromFinanceiro;
-    const managerPaidExternal =
-      gestorTotals.paidExternal + supervisorTotals.paidExternal;
-    const kitchenPaidTotal = cozinhaTotals.paid + barTotals.paid;
-    const kitchenPaidFromTipPool =
-      cozinhaTotals.paidFromTipPool + barTotals.paidFromTipPool;
-    const kitchenPaidFromFinanceiro =
-      cozinhaTotals.paidFromFinanceiro + barTotals.paidFromFinanceiro;
-    const kitchenPaidExternal =
-      cozinhaTotals.paidExternal + barTotals.paidExternal;
     const directTipOnlyTotal = dailyInputRows.reduce(
       (sum, row) =>
         sum +
@@ -988,10 +938,6 @@ export default function FinanceiroDiario() {
 
     const poolInitial =
       backendComputation?.bucket_balances.tip_pool_initial ?? tipPoolInput;
-    const poolAfterStaff = Math.max(
-      poolInitial - staffTotals.paidFromTipPool,
-      0,
-    );
     const poolNotAllocated = round2(
       Math.max(
         backendComputation?.bucket_balances.tip_pool_remaining ??
@@ -999,10 +945,6 @@ export default function FinanceiroDiario() {
         0,
       ),
     );
-    const staffBasePointsEquivalentPercent =
-      basePercentNumber > 0
-        ? (staffPercentBasePointsTotal / basePercentNumber) * 100
-        : 0;
 
     return {
       basePercentNumber,
@@ -1014,38 +956,13 @@ export default function FinanceiroDiario() {
       faturamentoComGorjeta,
       faturamentoSemGorjeta,
       difference,
-      staffPercentTotal,
-      staffPercentBasePointsTotal,
-      staffBasePointsEquivalentPercent,
-      staffPercentAbsoluteTotal,
-      staffPoolPayout: staffTotals.paidFromTipPool,
-      gestorDesired: gestorTotals.theoretical,
-      supervisorDesired: supervisorTotals.theoretical,
-      gestorPaid: gestorTotals.paid,
-      supervisorPaid: supervisorTotals.paid,
-      managerPaidTotal,
-      managerPaidFromTipPool,
-      managerPaidFromFinanceiro,
-      managerPaidExternal,
-      kitchenPaidTotal,
-      kitchenPaidFromTipPool,
-      kitchenPaidFromFinanceiro,
-      kitchenPaidExternal,
       employeeTotals,
       employeePaidByEngine,
       distributedTotal,
       distributedFromPool,
-      staffTotalWithDirect,
-      staffDirectTotal,
-      chamadorTotal:
-        chamadorTotalFromRows > 0 ? chamadorTotalFromRows : chamadorTotals.paid,
-      gestorPerEmployee,
-      supervisorPerEmployee,
-      chamadorPerEmployee,
       otherRoleGroups,
       roleTotals,
       poolInitial,
-      poolAfterStaff,
       poolNotAllocated,
       totalUnpaid: backendComputation?.totals.total_unpaid || 0,
       engineErrors: backendComputation?.errors || [],
@@ -1068,45 +985,16 @@ export default function FinanceiroDiario() {
     tipPool,
     directTotal,
     absoluteInputTotal,
-    staffPercentTotal,
-    staffPercentBasePointsTotal,
-    staffBasePointsEquivalentPercent,
-    staffPercentAbsoluteTotal,
-    staffPoolPayout,
-    gestorDesired,
-    supervisorDesired,
-    gestorPaid,
-    supervisorPaid,
-    managerPaidTotal,
-    managerPaidFromTipPool,
-    managerPaidFromFinanceiro,
-    managerPaidExternal,
-    kitchenPaidTotal,
-    kitchenPaidFromTipPool,
-    kitchenPaidFromFinanceiro,
-    kitchenPaidExternal,
     employeePaidByEngine,
-    staffTotalWithDirect,
-    staffDirectTotal,
     distributedFromPool,
     roleTotals,
     poolInitial,
-    poolAfterStaff,
     poolNotAllocated,
     totalUnpaid,
   } = calculations;
 
   const resumoOperacionalSuggestedItems = useMemo(() => {
-    type SuggestionCategory =
-      | 'gorjeta_percentual_total'
-      | 'non_pool_gerente'
-      | 'non_pool_supervisor'
-      | 'non_pool_chamador'
-      | 'non_pool_cozinha'
-      | 'non_pool_bar'
-      | 'non_pool_cozinha_bar'
-      | 'non_pool_staff'
-      | 'non_pool_outros';
+    type SuggestionCategory = string;
 
     const classifyTemplateCategory = (label: string): SuggestionCategory | null => {
       const normalized = normalizeFechoLabel(label);
@@ -1114,16 +1002,15 @@ export default function FinanceiroDiario() {
         return 'gorjeta_percentual_total';
       }
       if (normalized.includes('multibanco')) return null;
-      if (normalized.includes('gerent')) return 'non_pool_gerente';
-      if (normalized.includes('supervisor')) return 'non_pool_supervisor';
-      if (normalized.includes('chamador')) return 'non_pool_chamador';
-      if (normalized.includes('cozinha') && normalized.includes('bar')) {
-        return 'non_pool_cozinha_bar';
-      }
-      if (normalized.includes('cozinha')) return 'non_pool_cozinha';
-      if (normalized.includes('bar')) return 'non_pool_bar';
-      if (normalized.includes('staff') || normalized.includes('garcom')) {
-        return 'non_pool_staff';
+      // Dynamic: try to match template label to any known role bucket
+      const allRoleBuckets = Array.from(
+        new Set([
+          ...funcionarios.map((f) => toRoleBucket(f.funcao)),
+          ...(backendComputation?.role_breakdown || []).map((r) => toRoleBucket(r.role_name)),
+        ]),
+      );
+      for (const bucket of allRoleBuckets) {
+        if (bucket && normalized.includes(bucket)) return `non_pool_${bucket}`;
       }
       return null;
     };
@@ -1172,7 +1059,10 @@ export default function FinanceiroDiario() {
     (backendComputation?.employee_breakdown || []).forEach((line) => {
       if (line.funcID == null) return;
       if (roleBucketByEmployeeId.has(line.funcID)) return;
-      roleBucketByEmployeeId.set(line.funcID, toRoleBucket(line.role_bucket || line.role_name));
+      roleBucketByEmployeeId.set(
+        line.funcID,
+        toRoleBucket(line.role_name || line.role_bucket),
+      );
     });
 
     const outsidePoolByBucket: Record<string, number> = {};
@@ -1191,33 +1081,6 @@ export default function FinanceiroDiario() {
     });
 
     const gorjetaPercentualDistribuida = round2(distributedFromPool || 0);
-    const nonPoolGerente = round2(outsidePoolByBucket.gerente || 0);
-    const nonPoolSupervisor = round2(outsidePoolByBucket.supervisor || 0);
-    const nonPoolChamador = round2(outsidePoolByBucket.chamador || 0);
-    const nonPoolCozinha = round2(outsidePoolByBucket.cozinha || 0);
-    const nonPoolBar = round2(outsidePoolByBucket.bar || 0);
-    const nonPoolCozinhaBar = round2(nonPoolCozinha + nonPoolBar);
-    const nonPoolStaff = round2(outsidePoolByBucket.staff || 0);
-    const nonPoolOutros = round2(
-      Math.max(
-        Object.entries(outsidePoolByBucket).reduce(
-          (sum, [bucket, value]) =>
-            ['gerente', 'supervisor', 'chamador', 'cozinha', 'bar', 'staff'].includes(
-              bucket,
-            )
-              ? sum
-              : sum + value,
-          0,
-        ),
-        0,
-      ),
-    );
-
-    const hasTemplateForCategory = (category: SuggestionCategory) =>
-      Boolean((templatesByCategory.get(category) || []).length);
-    const hasCombinedKitchenBarTemplate = hasTemplateForCategory('non_pool_cozinha_bar');
-    const hasSplitKitchenBarTemplate =
-      hasTemplateForCategory('non_pool_cozinha') || hasTemplateForCategory('non_pool_bar');
 
     const baseSuggestions: Array<{
       category: SuggestionCategory;
@@ -1231,59 +1094,18 @@ export default function FinanceiroDiario() {
         defaultLabel: 'Gorjeta Percentual (Distribuída)',
         valor: gorjetaPercentualDistribuida,
       },
-      {
-        category: 'non_pool_gerente',
-        defaultLabel: 'Pagamento Gerentes (fora Gorjeta Percentual + Diretas)',
-        valor: nonPoolGerente,
-      },
-      {
-        category: 'non_pool_supervisor',
-        defaultLabel: 'Pagamento Supervisores (fora Gorjeta Percentual + Diretas)',
-        valor: nonPoolSupervisor,
-      },
-      {
-        category: 'non_pool_chamador',
-        defaultLabel: 'Pagamento Chamadores (fora Gorjeta Percentual + Diretas)',
-        valor: nonPoolChamador,
-      },
-      {
-        category: 'non_pool_staff',
-        defaultLabel: 'Pagamento Staff (fora Gorjeta Percentual + Diretas)',
-        valor: nonPoolStaff,
-      },
-      {
-        category: 'non_pool_outros',
-        defaultLabel: 'Outros Pagamentos (fora Gorjeta Percentual + Diretas)',
-        valor: nonPoolOutros,
-      },
     ];
 
-    if (hasCombinedKitchenBarTemplate) {
+    // Dynamically add suggestions for each role bucket with outside-pool payments
+    Object.entries(outsidePoolByBucket).forEach(([bucket, valor]) => {
+      if (valor <= 0) return;
+      const title = toRoleSectionTitle(bucket);
       baseSuggestions.push({
-        category: 'non_pool_cozinha_bar',
-        defaultLabel: 'Pagamento Cozinha/Bar (fora Gorjeta Percentual + Diretas)',
-        valor: nonPoolCozinhaBar,
+        category: `non_pool_${bucket}`,
+        defaultLabel: `Pagamento ${title} (fora Gorjeta Percentual + Diretas)`,
+        valor: round2(valor),
       });
-    } else if (hasSplitKitchenBarTemplate) {
-      baseSuggestions.push(
-        {
-          category: 'non_pool_cozinha',
-          defaultLabel: 'Pagamento Cozinha (fora Gorjeta Percentual + Diretas)',
-          valor: nonPoolCozinha,
-        },
-        {
-          category: 'non_pool_bar',
-          defaultLabel: 'Pagamento Bar (fora Gorjeta Percentual + Diretas)',
-          valor: nonPoolBar,
-        },
-      );
-    } else {
-      baseSuggestions.push({
-        category: 'non_pool_cozinha_bar',
-        defaultLabel: 'Pagamento Cozinha/Bar (fora Gorjeta Percentual + Diretas)',
-        valor: nonPoolCozinhaBar,
-      });
-    }
+    });
 
     return baseSuggestions
       .filter((item) => item.always || round2(item.valor) > 0)
@@ -1509,47 +1331,33 @@ export default function FinanceiroDiario() {
     });
 
     const defaultBucketOrder = [
-      'supervisor',
-      'chamador',
-      'gerente',
-      'staff',
-      'cozinha',
-      'bar',
+      ...rulesOrderBuckets,
     ];
 
     const remainingBuckets = Array.from(rowsByBucket.keys()).filter(
       (bucket) => !rulesOrderBuckets.includes(bucket),
     );
     const orderedRemaining = [
-      ...defaultBucketOrder.filter((bucket) => remainingBuckets.includes(bucket)),
       ...remainingBuckets
-        .filter((bucket) => !defaultBucketOrder.includes(bucket))
-        .sort((a, b) => a.localeCompare(b)),
+        .slice()
+        .sort((a, b) =>
+          toRoleSectionTitle(a).localeCompare(toRoleSectionTitle(b), 'pt-PT', {
+            sensitivity: 'base',
+          }),
+        ),
     ];
-    const orderedBuckets = [...rulesOrderBuckets, ...orderedRemaining];
-
-    const bucketTitle = (bucket: string) => {
-      if (bucket === 'supervisor') return 'Gestores';
-      if (bucket === 'chamador') return 'Chamadores';
-      if (bucket === 'gerente') return 'Gerentes';
-      if (bucket === 'staff') return 'Staff';
-      if (bucket === 'cozinha') return 'Cozinha';
-      if (bucket === 'bar') return 'Bar';
-      return bucket
-        .split('_')
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ');
-    };
+    const orderedBuckets = [...defaultBucketOrder, ...orderedRemaining];
 
     return orderedBuckets.map((bucket) => ({
       bucket,
-      title: bucketTitle(bucket),
+      title: toRoleSectionTitle(bucket),
       rows: (rowsByBucket.get(bucket) || []).slice().sort((a, b) => {
         const byName = a.name.localeCompare(b.name);
         return byName !== 0 ? byName : a.funcID - b.funcID;
       }),
     }));
   }, [backendComputation, funcionarios]);
+
 
   const employeeValuesById = useMemo(() => {
     const values: Record<
@@ -1641,14 +1449,73 @@ export default function FinanceiroDiario() {
     return values;
   }, [backendComputation, funcionarios, gorjetaInputs, isAbsoluteExternalRole]);
 
-  const chamadorEffectiveTotal = useMemo(
-    () =>
-      funcionarios.reduce((sum, func) => {
-        if (toRoleBucket(func.funcao) !== 'chamador') return sum;
-        return sum + (employeeValuesById[func.funcID]?.effective || 0);
-      }, 0),
-    [employeeValuesById, funcionarios],
-  );
+  const distributionRoleCards = useMemo(() => {
+    const groupedBucketOrder = groupedEmployeeRows.map((group) => group.bucket);
+    const groupedBucketIndex = new Map(
+      groupedBucketOrder.map((bucket, index) => [bucket, index]),
+    );
+
+    const effectiveByBucket: Record<string, { effective: number; rulesEffective: number; directEffective: number; unpaid: number }> = {};
+    funcionarios.forEach((func) => {
+      const bucket = toRoleBucket(func.funcao);
+      if (!effectiveByBucket[bucket]) {
+        effectiveByBucket[bucket] = { effective: 0, rulesEffective: 0, directEffective: 0, unpaid: 0 };
+      }
+      const vals = employeeValuesById[func.funcID];
+      if (vals) {
+        effectiveByBucket[bucket].effective += vals.effective;
+        effectiveByBucket[bucket].rulesEffective += vals.rulesEffective;
+        effectiveByBucket[bucket].directEffective += vals.directEffective;
+        effectiveByBucket[bucket].unpaid += vals.unpaid;
+      }
+    });
+
+    const allBuckets = Array.from(
+      new Set([...groupedBucketOrder, ...Object.keys(roleTotals || {}), ...Object.keys(effectiveByBucket)]),
+    );
+
+    return allBuckets
+      .map((bucket) => {
+        const engineTotals = roleTotals[bucket] || {
+          theoretical: 0,
+          paid: 0,
+          unpaid: 0,
+          paidFromTipPool: 0,
+          paidFromFinanceiro: 0,
+          paidExternal: 0,
+        };
+        const eff = effectiveByBucket[bucket] || { effective: 0, rulesEffective: 0, directEffective: 0, unpaid: 0 };
+        return {
+          bucket,
+          title: toRoleSectionTitle(bucket),
+          totals: {
+            ...engineTotals,
+            paid: round2(eff.effective),
+            unpaid: round2(eff.unpaid),
+          },
+          effective: round2(eff.effective),
+          rulesEffective: round2(eff.rulesEffective),
+          directEffective: round2(eff.directEffective),
+        };
+      })
+      .filter(
+        ({ bucket, totals, effective }) =>
+          groupedBucketIndex.has(bucket) ||
+          totals.theoretical > 0 ||
+          effective > 0 ||
+          totals.paidFromTipPool > 0 ||
+          totals.paidFromFinanceiro > 0 ||
+          totals.paidExternal > 0,
+      )
+      .sort((a, b) => {
+        const idxA = groupedBucketIndex.get(a.bucket);
+        const idxB = groupedBucketIndex.get(b.bucket);
+        if (idxA != null && idxB != null) return idxA - idxB;
+        if (idxA != null) return -1;
+        if (idxB != null) return 1;
+        return a.title.localeCompare(b.title, 'pt-PT', { sensitivity: 'base' });
+      });
+  }, [employeeValuesById, funcionarios, groupedEmployeeRows, roleTotals]);
 
   const handleSalvarFinanceiro = async () => {
     if (!restaurantId || !selectedDate) {
@@ -1708,6 +1575,10 @@ export default function FinanceiroDiario() {
       };
 
       await apiClient.saveFinanceiroSnapshot(restaurantId, payload);
+      // Clear sessionStorage after successful save so next load fetches fresh data
+      formDirtyRef.current = false;
+      setFormDirty(false);
+      try { sessionStorage.removeItem(buildFormSessionKey(restaurantId, selectedDate)); } catch {}
       setSnapshotMessage('Snapshot salvo com sucesso.');
       setTimeout(() => setSnapshotMessage(''), 3000);
     } catch (err) {
@@ -1720,6 +1591,28 @@ export default function FinanceiroDiario() {
 
   const loadSnapshot = async () => {
     if (!restaurantId || !selectedDate || funcionarios.length === 0) return;
+
+    // Check sessionStorage for unsaved edits before hitting backend
+    const formKey = buildFormSessionKey(restaurantId, selectedDate);
+    try {
+      const raw = sessionStorage.getItem(formKey);
+      if (raw) {
+        const stored = JSON.parse(raw);
+        if (stored.gorjetaInputs && typeof stored.gorjetaInputs === 'object') {
+          const merged: Record<number, GorjetaEntry> = {};
+          funcionarios.forEach((f) => {
+            merged[f.funcID] = stored.gorjetaInputs[f.funcID] || { valor: '', direta: '', presente: false, desconto: '' };
+          });
+          setGorjetaInputs(merged);
+          setFaturamentoGlobal(stored.faturamentoGlobal ?? '');
+          setSnapshotLoaded(true);
+          formDirtyRef.current = false;
+          setFormDirty(true);
+          return;
+        }
+      }
+    } catch {}
+
     // Build defaults based on current employees to avoid stale values when switching datas
     const defaultStaffState: Record<number, GorjetaEntry> = {};
     funcionarios.forEach((f) => {
@@ -1776,7 +1669,7 @@ export default function FinanceiroDiario() {
         const entryFunc =
           e.funcID != null ? funcionarioById.get(Number(e.funcID)) : undefined;
         const employeeBucket = entryFunc ? toRoleBucket(entryFunc.funcao || '') : '';
-        const effectiveBucket = roleBucket || employeeBucket;
+        const effectiveBucket = employeeBucket || roleBucket;
         const poolValue = Number(e.valor_pool || 0);
         const directValue = Number(e.valor_direto || 0);
         const paidValue = Number(e.valor_pago || 0);
@@ -1865,10 +1758,14 @@ export default function FinanceiroDiario() {
 
       setGorjetaInputs(gorjetaState);
       setSnapshotLoaded(true);
+      formDirtyRef.current = false;
+      setFormDirty(false);
       setSnapshotMessage('Dados salvos carregados. Edite e salve novamente.');
       setTimeout(() => setSnapshotMessage(''), 3000);
     } catch (err) {
       // ignore load errors to avoid blocking UI, keep defaults
+      formDirtyRef.current = false;
+      setFormDirty(false);
       setSnapshotMessage('Não foi possível carregar os dados salvos. Tente novamente.');
       setTimeout(() => setSnapshotMessage(''), 4000);
     } finally {
@@ -1901,7 +1798,11 @@ export default function FinanceiroDiario() {
               <label>Restaurante</label>
               <select
                 value={restaurantId || ''}
-                onChange={(e) => setRestaurantId(parseInt(e.target.value, 10) || null)}
+                onChange={(e) =>
+                  handleRestaurantSelectionChange(
+                    parseInt(e.target.value, 10) || null,
+                  )
+                }
               >
                 <option value="">Selecione</option>
                 {restaurantes.map((rest) => (
@@ -1917,7 +1818,7 @@ export default function FinanceiroDiario() {
               <input
                 type="date"
                 value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
+                onChange={(e) => handleDateSelectionChange(e.target.value)}
               />
             </div>
 
@@ -1931,6 +1832,9 @@ export default function FinanceiroDiario() {
               >
                 {snapshotLoading ? 'Salvando...' : computeLoading ? 'Calculando...' : 'Salvar dia'}
               </button>
+              {formDirty && (
+                <span className={styles.unsavedBadge}><span className={styles.unsavedDot} />Não salvo</span>
+              )}
             </div>
             <div className={styles.selectGroup}>
               <label>&nbsp;</label>
@@ -1998,7 +1902,7 @@ export default function FinanceiroDiario() {
                 type="number"
                 step="0.01"
                 value={faturamentoGlobal}
-                onChange={(e) => setFaturamentoGlobal(e.target.value)}
+                onChange={(e) => { formDirtyRef.current = true; setFormDirty(true); setFaturamentoGlobal(e.target.value); }}
                 placeholder="0.00"
               />
             </div>
@@ -2151,7 +2055,7 @@ export default function FinanceiroDiario() {
         <section className={styles.section}>
           <div className={styles.sectionHeader}>
             <div>
-              <h2>Distribuição das gorjetas</h2>
+              <h2>Distribuição por Função</h2>
               <p>
                 Resultado final por função, respeitando exatamente as regras ativas e o saldo real de
                 cada fonte de pagamento.
@@ -2160,63 +2064,30 @@ export default function FinanceiroDiario() {
           </div>
 
           <div className={styles.distributionGrid}>
-            <div className={styles.distributionCard}>
-              <div className={styles.distributionTitle}>Staff</div>
-              <div className={styles.distributionValue}>{currency(staffPoolPayout)}</div>
-              <div className={styles.distributionMeta}>
-                Configurado:{' '}
-                {staffPercentBasePointsTotal > 0
-                  ? `${staffPercentBasePointsTotal.toFixed(2)} pts de ${basePercentNumber}% (= ${staffBasePointsEquivalentPercent.toFixed(2)}% do pool)`
-                  : null}
-                {staffPercentBasePointsTotal > 0 && staffPercentAbsoluteTotal > 0 ? ' · ' : null}
-                {staffPercentAbsoluteTotal > 0
-                  ? `${staffPercentAbsoluteTotal.toFixed(2)}% absoluto`
-                  : null}
-                {staffPercentTotal <= 0 ? ' sem regra percentual' : null}
-                {' · '}Pago do pool:{' '}
-                {currency(staffPoolPayout)}
+            {distributionRoleCards.map(({ bucket, title, totals, effective, rulesEffective, directEffective }) => (
+              <div key={`dist-role-${bucket}`} className={styles.distributionCard}>
+                <div className={styles.distributionTitle}>{title}</div>
+                <div className={styles.distributionValue}>
+                  {currency(effective)}
+                </div>
+                <div className={styles.distributionMeta}>
+                  Regras: {currency(rulesEffective)}
+                  {directEffective > 0 && <> · Diretas: {currency(directEffective)}</>}
+                </div>
+                {(totals.paidFromTipPool > 0 || totals.paidFromFinanceiro > 0 || totals.paidExternal > 0) && (
+                  <div className={styles.distributionMeta}>
+                    {totals.paidFromTipPool > 0 && <>Pool: {currency(totals.paidFromTipPool)} </>}
+                    {totals.paidFromFinanceiro > 0 && <>· Financeiro: {currency(totals.paidFromFinanceiro)} </>}
+                    {totals.paidExternal > 0 && <>· Externo: {currency(totals.paidExternal)}</>}
+                  </div>
+                )}
+                {totals.unpaid > 0 && (
+                  <div className={styles.distributionMeta} style={{ color: '#e74c3c' }}>
+                    Não pago: {currency(totals.unpaid)}
+                  </div>
+                )}
               </div>
-              <div className={styles.distributionMeta}>
-                Total staff (pool + diretas): {currency(staffTotalWithDirect)} · Diretas:{' '}
-                {currency(staffDirectTotal)} (fora do TIP_POOL)
-              </div>
-            </div>
-
-            <div className={styles.distributionCard}>
-              <div className={styles.distributionTitle}>Gerente</div>
-              <div className={styles.distributionValue}>{currency(gestorPaid)}</div>
-              <div className={styles.distributionMeta}>
-                Teórico: {currency(gestorDesired)} · Pago total: {currency(gestorPaid)}
-              </div>
-              <div className={styles.distributionMeta}>
-                Do pool: {currency(roleTotals.gerente?.paidFromTipPool || 0)} · Financeiro:{' '}
-                {currency(roleTotals.gerente?.paidFromFinanceiro || 0)} · Externo:{' '}
-                {currency(roleTotals.gerente?.paidExternal || 0)}
-              </div>
-            </div>
-
-            <div className={styles.distributionCard}>
-              <div className={styles.distributionTitle}>Supervisor</div>
-              <div className={styles.distributionValue}>{currency(supervisorPaid)}</div>
-              <div className={styles.distributionMeta}>
-                Teórico: {currency(supervisorDesired)} · Pago total: {currency(supervisorPaid)}
-              </div>
-              <div className={styles.distributionMeta}>
-                Do pool: {currency(roleTotals.supervisor?.paidFromTipPool || 0)} · Financeiro:{' '}
-                {currency(roleTotals.supervisor?.paidFromFinanceiro || 0)} · Externo:{' '}
-                {currency(roleTotals.supervisor?.paidExternal || 0)}
-              </div>
-            </div>
-
-            <div className={styles.distributionCard}>
-              <div className={styles.distributionTitle}>Cozinha / Bar</div>
-              <div className={styles.distributionValue}>{currency(kitchenPaidTotal)}</div>
-              <div className={styles.distributionMeta}>
-                Do pool: {currency(kitchenPaidFromTipPool)} · Financeiro:{' '}
-                {currency(kitchenPaidFromFinanceiro)} · Externo:{' '}
-                {currency(kitchenPaidExternal)}
-              </div>
-            </div>
+            ))}
 
             <div className={styles.distributionCard}>
               <div className={styles.distributionTitle}>Pool não distribuído</div>
@@ -2225,14 +2096,6 @@ export default function FinanceiroDiario() {
               </div>
               <div className={styles.distributionMeta}>
                 Pool inicial: {currency(poolInitial)} · Distribuído do pool: {currency(distributedFromPool)}
-              </div>
-            </div>
-
-            <div className={styles.distributionCard}>
-              <div className={styles.distributionTitle}>Chamadores (faturamento global)</div>
-              <div className={styles.distributionValue}>{currency(chamadorEffectiveTotal)}</div>
-              <div className={styles.distributionMeta}>
-                Valores calculados por regras. Fora do pool de gorjetas quando pago via fonte externa.
               </div>
             </div>
 
@@ -2247,22 +2110,13 @@ export default function FinanceiroDiario() {
 
           <div className={styles.notice}>
             <div>
-              <strong>Staff (pool):</strong> {currency(staffPoolPayout)}
-              {' · '}
-              <strong>Staff (diretas):</strong> {currency(staffDirectTotal)}
-              {' · '}
-              <strong>Saldo do pool após staff:</strong> {currency(poolAfterStaff)}
-              {' · '}
-              <strong>Gerente + Supervisor (real):</strong> {currency(managerPaidTotal)}
-              {' · '}
-              <strong>Gerente + Supervisor (pool):</strong> {currency(managerPaidFromTipPool)}
-              {' · '}
-              <strong>Gerente + Supervisor (financeiro):</strong> {currency(managerPaidFromFinanceiro)}
-              {' · '}
-              <strong>Gerente + Supervisor (externo):</strong> {currency(managerPaidExternal)}
-              {' · '}
-              <strong>Cozinha/Bar (pool):</strong> {currency(kitchenPaidFromTipPool)}
-              {' · '}
+              {distributionRoleCards
+                .map((item) => (
+                  <span key={`summary-role-${item.bucket}`}>
+                    <strong>{item.title}:</strong> {currency(item.effective)}
+                    {' · '}
+                  </span>
+                ))}
               <strong>Pool inicial:</strong> {currency(poolInitial)}
               {' · '}
               <strong>Pool distribuído (TIP_POOL):</strong> {currency(distributedFromPool)}
@@ -2283,6 +2137,9 @@ export default function FinanceiroDiario() {
           >
             {snapshotLoading ? 'Salvando...' : computeLoading ? 'Calculando...' : 'Salvar dia'}
           </button>
+          {formDirty && (
+            <span className={styles.unsavedBadge} style={{ marginTop: 8, justifyContent: 'center' }}><span className={styles.unsavedDot} />Não salvo</span>
+          )}
         </div>
 
         <section className={styles.section}>

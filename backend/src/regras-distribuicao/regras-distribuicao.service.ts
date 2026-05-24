@@ -17,16 +17,20 @@ import {
   SettlementType,
 } from '../payout-calculator/payout-calculator.types';
 import { Decimal } from 'decimal.js';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { AuditAction, AuditEntity } from '@prisma/client';
 
 @Injectable()
 export class RegrasDistribuicaoService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private eventEmitter: EventEmitter2,
+  ) {}
 
   private normalizeRoleName(roleName: string): string {
     return (roleName || '')
       .trim()
-      .toLowerCase()
-      .replace(/gestor/g, 'gerente');
+      .toLowerCase();
   }
 
   async findAll(restID: number, apenasAtivos?: boolean) {
@@ -63,7 +67,7 @@ export class RegrasDistribuicaoService {
     );
     const tipoDeAcerto = this.resolveTipoAcerto(dto.tipo_de_acerto);
 
-    return this.prisma.regraDistribuicao.create({
+    const created = await this.prisma.regraDistribuicao.create({
       data: {
         restID,
         role_name: this.normalizeRoleName(dto.role_name),
@@ -77,6 +81,22 @@ export class RegrasDistribuicaoService {
         ordem: dto.ordem ?? 0,
       } as any,
     });
+
+    this.eventEmitter.emit('audit.action', {
+      requestId: (global as any).requestId,
+      userId: (global as any).userId,
+      restID,
+      action: AuditAction.CREATED,
+      entity: AuditEntity.RegraDistribuicao,
+      entityId: created.id.toString(),
+      status: 'SUCCESS',
+      valuesAfter: created,
+      ipAddress: (global as any).ipAddress,
+      userAgent: (global as any).userAgent,
+      duration: (global as any).requestDuration,
+    });
+
+    return created;
   }
 
   async update(id: number, restID: number, dto: UpdateRegraDistribuicaoDto) {
@@ -146,15 +166,49 @@ export class RegrasDistribuicaoService {
     if (dto.ordem !== undefined) updateData.ordem = dto.ordem;
     if (dto.ativo !== undefined) updateData.ativo = dto.ativo;
 
-    return this.prisma.regraDistribuicao.update({
+    const updated = await this.prisma.regraDistribuicao.update({
       where: { id },
       data: updateData,
     });
+
+    this.eventEmitter.emit('audit.action', {
+      requestId: (global as any).requestId,
+      userId: (global as any).userId,
+      restID,
+      action: AuditAction.UPDATED,
+      entity: AuditEntity.RegraDistribuicao,
+      entityId: id.toString(),
+      status: 'SUCCESS',
+      valuesBefore: existing,
+      valuesAfter: updated,
+      ipAddress: (global as any).ipAddress,
+      userAgent: (global as any).userAgent,
+      duration: (global as any).requestDuration,
+    });
+
+    return updated;
   }
 
   async delete(id: number, restID: number) {
-    await this.findOne(id, restID);
-    return this.prisma.regraDistribuicao.delete({ where: { id } });
+    const existing = await this.findOne(id, restID);
+    const deleted = await this.prisma.regraDistribuicao.delete({ where: { id } });
+
+    this.eventEmitter.emit('audit.action', {
+      requestId: (global as any).requestId,
+      userId: (global as any).userId,
+      restID,
+      action: AuditAction.DELETED,
+      entity: AuditEntity.RegraDistribuicao,
+      entityId: id.toString(),
+      status: 'SUCCESS',
+      valuesBefore: existing,
+      valuesAfter: deleted,
+      ipAddress: (global as any).ipAddress,
+      userAgent: (global as any).userAgent,
+      duration: (global as any).requestDuration,
+    });
+
+    return deleted;
   }
 
   private validateRule(
@@ -196,9 +250,9 @@ export class RegrasDistribuicaoService {
   }
 
   private resolveSplitMode(
-    roleName: string,
-    calculationType: CalculationType,
-    calculationBase: CalculationBase | null,
+    _roleName: string,
+    _calculationType: CalculationType,
+    _calculationBase: CalculationBase | null,
     paymentSource: PaymentSource,
     requested?: EmployeeSplitMode,
   ): EmployeeSplitMode {
@@ -206,20 +260,6 @@ export class RegrasDistribuicaoService {
 
     if (paymentSource === PaymentSource.ABSOLUTE_EXTERNAL) {
       return EmployeeSplitMode.DIRECT_INPUT_ONLY;
-    }
-
-    const role = (roleName || '')
-      .toLowerCase()
-      .trim()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '');
-
-    if (
-      (role === 'staff' || role.includes('garcom')) &&
-      calculationType === CalculationType.PERCENT &&
-      calculationBase === CalculationBase.VALOR_TOTAL_GORJETAS
-    ) {
-      return EmployeeSplitMode.PROPORTIONAL_TO_POOL_INPUT;
     }
 
     return EmployeeSplitMode.EQUAL_SPLIT;

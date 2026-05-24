@@ -52,12 +52,12 @@ backend/src/
 │   └── dto/
 │       └── funcionario.dto.ts       # DTOs (Create, Update)
 │
-├── configuracao-gorjetas/    # Tip Configuration
-│   ├── configuracao-gorjetas.controller.ts  # 3 endpoints
-│   ├── configuracao-gorjetas.service.ts     # Logic
-│   ├── configuracao-gorjetas.module.ts      # Module
+├── configuracao-acerto/      # Tip/settlement configuration
+│   ├── configuracao-acerto.controller.ts  # 4 endpoints
+│   ├── configuracao-acerto.service.ts     # Logic
+│   ├── configuracao-acerto.module.ts      # Module
 │   └── dto/
-│       └── configuracao-gorjetas.dto.ts     # DTOs
+│       └── configuracao-acerto.dto.ts      # DTOs
 │
 ├── transacoes/               # Transactions (Core)
 │   ├── transacoes.controller.ts     # 3 endpoints (GET, POST)
@@ -80,9 +80,9 @@ backend/src/
 │   └── dto/
 │       └── relatorio.dto.ts         # DTOs
 │
-└── tip-calculator/           # Calculation Engine
-    ├── tip-calculator.service.ts    # Core math logic
-    └── tip-calculator.module.ts     # Module
+└── payout-calculator/        # Calculation Engine
+    ├── payout-calculator.service.ts   # Core math logic
+    └── payout-calculator.module.ts    # Module
 ```
 
 ## 📂 Frontend (`frontend/`)
@@ -103,12 +103,17 @@ frontend/src/
 │   ├── _app.tsx              # App wrapper (CSS import)
 │   ├── index.tsx             # Home page (dashboard)
 │   ├── funcionarios.tsx      # Employee management
-│   ├── configuracao-gorjetas.tsx  # Tip configuration
+│   ├── configuracao-gorjetas.tsx  # Legacy redirect
+│   ├── configuracao/
+│   │   └── acerto.tsx             # Active config UI
 │   ├── relatorios.tsx        # Reports page
-│   │
-│   └── transacoes/
-│       ├── nova.tsx          # Create transaction (with preview)
-│       └── index.tsx         # List transactions (with filter + modal)
+│   ├── acerto-final.tsx      # Settlement / payout workflow
+│   ├── financeiro-diario.tsx # Daily financial overview
+│   ├── restaurantes.tsx      # Restaurant management
+│   ├── usuarios.tsx          # User management
+│   ├── auditoria.tsx         # Audit trail and sessions
+│   ├── login.tsx             # Login
+│   └── register.tsx          # Registration
 │
 ├── components/
 │   ├── Layout.tsx            # Page wrapper with nav

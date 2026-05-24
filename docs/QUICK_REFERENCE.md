@@ -3,7 +3,7 @@
 ## File Structure
 
 ```
-pwa_restaurantes_lisboa/
+pwa_gorjetas/
 ├── docker-compose.yml              # PostgreSQL config
 ├── setup.sh                        # Automated setup script
 ├── README.md                       # Main documentation
@@ -18,11 +18,11 @@ pwa_restaurantes_lisboa/
 │   │   ├── app.module.ts          # Root module
 │   │   ├── prisma/                # PrismaService
 │   │   ├── funcionarios/          # Employees CRUD
-│   │   ├── configuracao-gorjetas/ # Tip configs
+│   │   ├── configuracao-acerto/   # Tip/settlement configs
 │   │   ├── transacoes/            # Transactions + atomic ops
 │   │   ├── distribuicao-gorjetas/ # Distribution records
 │   │   ├── relatorios/            # Reports
-│   │   └── tip-calculator/        # Calculation engine
+│   │   └── payout-calculator/     # Calculation engine
 │   ├── .env                       # DATABASE_URL
 │   ├── tsconfig.json
 │   ├── package.json
@@ -34,11 +34,15 @@ pwa_restaurantes_lisboa/
 │   │   │   ├── _app.tsx           # App wrapper
 │   │   │   ├── index.tsx          # Home
 │   │   │   ├── funcionarios.tsx   # Employees
-│   │   │   ├── configuracao-gorjetas.tsx
+│   │   │   ├── configuracao-gorjetas.tsx  # Legacy redirect
+│   │   │   ├── configuracao/
+│   │   │   │   └── acerto.tsx
 │   │   │   ├── relatorios.tsx
-│   │   │   └── transacoes/
-│   │   │       ├── nova.tsx       # Create transaction
-│   │   │       └── index.tsx      # List transactions
+│   │   │   ├── acerto-final.tsx
+│   │   │   ├── financeiro-diario.tsx
+│   │   │   ├── restaurantes.tsx
+│   │   │   ├── usuarios.tsx
+│   │   │   └── auditoria.tsx
 │   │   ├── components/
 │   │   │   ├── Layout.tsx
 │   │   │   └── Navigation.tsx
@@ -70,7 +74,7 @@ docker-compose up -d
 docker-compose down
 
 # View logs
-docker-compose logs postgres
+docker-compose logs db
 ```
 
 ### Backend
@@ -192,7 +196,7 @@ npx prisma migrate status
 
 ### Backend (.env)
 ```
-DATABASE_URL=postgresql://restaurantes_user:restaurantes_pass@localhost:5432/restaurantes_db
+DATABASE_URL=postgresql://app:app@localhost:5432/app
 ```
 
 ### Frontend (.env.local)
@@ -246,10 +250,10 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 
 ```bash
 # Backup database
-docker exec pwa_restaurantes_db pg_dump -U restaurantes_user restaurantes_db > backup.sql
+./db-backup-restore.sh backup
 
 # Restore from backup
-cat backup.sql | docker exec -i pwa_restaurantes_db psql -U restaurantes_user restaurantes_db
+./db-backup-restore.sh restore backups/<arquivo>.sql
 ```
 
 ---

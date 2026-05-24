@@ -10,12 +10,15 @@ import {
 import { Prisma } from '@prisma/client';
 import { FinanceEngineService } from '../finance-engine/finance-engine.service';
 import { DailyFinanceComputation } from '../finance-engine/finance-engine.types';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { AuditAction, AuditEntity } from '@prisma/client';
 
 @Injectable()
 export class FaturamentoDiarioService {
   constructor(
     private prisma: PrismaService,
     private financeEngine: FinanceEngineService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -38,22 +41,6 @@ export class FaturamentoDiarioService {
       .trim()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '');
-  }
-
-  private isStaffRole(funcao: string): boolean {
-    const role = this.normalizeRole(funcao);
-    return role === 'staff' || role.includes('garcom');
-  }
-
-  private toRoleBucket(roleName: string): string {
-    const role = this.normalizeRole(roleName);
-    if (role === 'staff' || role.includes('garcom')) return 'staff';
-    if (role.includes('gestor') || role.includes('gerente')) return 'gerente';
-    if (role.includes('supervisor') || role.includes('chefe') || role.includes('turno')) return 'supervisor';
-    if (role.includes('cozinha')) return 'cozinha';
-    if (role === 'bar' || role.includes('bar')) return 'bar';
-    if (role.includes('chamador')) return 'chamador';
-    return role || 'outros';
   }
 
   private buildStaffInputsFromDistrib(
@@ -115,6 +102,28 @@ export class FaturamentoDiarioService {
       },
       orderBy: { createdAt: 'asc' },
     });
+    const referencedFuncIDs = Array.from(
+      new Set(
+        distribRows
+          .map((row) => (row.funcID != null ? Number(row.funcID) : null))
+          .filter((funcID): funcID is number => funcID != null),
+      ),
+    );
+    const missingReferencedFuncIDs = referencedFuncIDs.filter(
+      (funcID) => !funcionariosAtivos.some((func) => func.funcID === funcID),
+    );
+    const funcionariosReferenciados = missingReferencedFuncIDs.length
+      ? await this.prisma.funcionario.findMany({
+          where: {
+            funcID: { in: missingReferencedFuncIDs },
+          },
+          select: {
+            funcID: true,
+            name: true,
+            funcao: true,
+          },
+        })
+      : [];
     const restaurante = await this.prisma.restaurante.findUnique({
       where: { restID },
       select: { percentagem_gorjeta_base: true },
@@ -163,7 +172,10 @@ export class FaturamentoDiarioService {
       staffInputs.map((entry) => [entry.funcID, entry]),
     );
     const employeeMetaByFuncID = new Map(
-      funcionariosAtivos.map((f) => [f.funcID, { name: f.name, funcao: f.funcao }]),
+      [...funcionariosAtivos, ...funcionariosReferenciados].map((f) => [
+        f.funcID,
+        { name: f.name, funcao: f.funcao },
+      ]),
     );
 
     const aggregate = new Map<
@@ -219,7 +231,7 @@ export class FaturamentoDiarioService {
       const rowFuncID = row.funcID != null ? Number(row.funcID) : null;
       const employeeMeta =
         rowFuncID != null ? employeeMetaByFuncID.get(rowFuncID) : undefined;
-      const roleBucket = this.toRoleBucket(row.role || employeeMeta?.funcao || '');
+      const roleBucket = this.normalizeRole(row.role || employeeMeta?.funcao || '');
       const fallbackRole = roleBucket || this.normalizeRole(row.role || '') || 'outros';
       const existingKey =
         rowFuncID != null ? aggregateKeyByFuncID.get(rowFuncID) : undefined;
@@ -386,6 +398,21 @@ export class FaturamentoDiarioService {
       },
     });
 
+    // Emit audit event
+    this.eventEmitter.emit('audit.action', {
+      requestId: (global as any).requestId,
+      userId: (global as any).userId,
+      restID,
+      action: AuditAction.CREATED,
+      entity: AuditEntity.FaturamentoDiario,
+      entityId: faturamento.id.toString(),
+      status: 'SUCCESS',
+      valuesAfter: faturamento,
+      ipAddress: (global as any).ipAddress,
+      userAgent: (global as any).userAgent,
+      duration: (global as any).requestDuration,
+    });
+
     return this.mapToResponse(faturamento, gorjetas);
   }
 
@@ -510,6 +537,21 @@ export class FaturamentoDiarioService {
       atualizado.data,
     );
 
+    // Emit audit event with before/after snapshots
+    this.eventEmitter.emit('audit.action', {
+      requestId: (global as any).requestId,
+      userId: (global as any).userId,
+      restID,
+      action: AuditAction.UPDATED,
+      entity: AuditEntity.FaturamentoDiario,
+      entityId: id.toString(),
+      status: 'SUCCESS',
+      valuesBefore: faturamento,
+      valuesAfter: atualizado,
+      ipAddress: (global as any).ipAddress,
+      userAgent: (global as any).userAgent,
+      duration: (global as any).requestDuration,
+    });
     return this.mapToResponse(atualizado, gorjetas);
   }
 
@@ -528,6 +570,21 @@ export class FaturamentoDiarioService {
     await this.prisma.faturamentoDiario.update({
       where: { id },
       data: { ativo: false },
+    });
+
+    // Emit audit event for soft delete
+    this.eventEmitter.emit('audit.action', {
+      requestId: (global as any).requestId,
+      userId: (global as any).userId,
+      restID,
+      action: AuditAction.DELETED,
+      entity: AuditEntity.FaturamentoDiario,
+      entityId: id.toString(),
+      status: 'SUCCESS',
+      valuesBefore: faturamento,
+      ipAddress: (global as any).ipAddress,
+      userAgent: (global as any).userAgent,
+      duration: (global as any).requestDuration,
     });
   }
 
@@ -719,7 +776,7 @@ export class FaturamentoDiarioService {
       });
 
       (dto.staff || []).forEach((staffEntry) => {
-        const roleFromEmployee = this.toRoleBucket(
+        const roleFromEmployee = this.normalizeRole(
           employeeRoleByFuncID.get(staffEntry.funcID) || '',
         );
         const fallbackRole = roleFromEmployee || 'outros';
@@ -805,6 +862,26 @@ export class FaturamentoDiarioService {
           `;
         }
       }
+    });
+
+    // Emit audit event for snapshot save
+    this.eventEmitter.emit('audit.action', {
+      requestId: (global as any).requestId,
+      userId: (global as any).userId,
+      restID,
+      action: AuditAction.SNAPSHOT,
+      entity: AuditEntity.FaturamentoDiario,
+      entityId: `${restID}::${dataFormatada.toISOString()}`,
+      status: 'SUCCESS',
+      valuesAfter: {
+        data: dataFormatada,
+        faturamento_global: dto.faturamento_global,
+        valor_total_gorjetas: dto.valor_total_gorjetas,
+        staff_count: (dto.staff || []).length,
+      },
+      ipAddress: (global as any).ipAddress,
+      userAgent: (global as any).userAgent,
+      duration: (global as any).requestDuration,
     });
   }
 

@@ -45,6 +45,7 @@ interface SnapshotEntry {
   valor_direto: number;
   valor_teorico: number;
   valor_pago: number;
+  desconto?: number;
 }
 
 interface SnapshotPresencaEntry {
@@ -108,6 +109,8 @@ interface SavedAcertoPeriodo {
   restID: number;
   periodo_inicio: string;
   periodo_fim: string;
+  criadoEm?: string;
+  atualizadoEm?: string;
   entries: SavedAcertoEntry[];
 }
 
@@ -130,27 +133,15 @@ const normalizeRole = (value: string) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
-const toRoleBucket = (roleName: string) => {
-  const role = normalizeRole(roleName);
-  if (role === 'staff' || role.includes('garcom')) return 'staff';
-  if (role.includes('gestor') || role.includes('gerente')) return 'gerente';
-  if (role.includes('supervisor') || role.includes('chefe') || role.includes('turno')) return 'supervisor';
-  if (role.includes('cozinha')) return 'cozinha';
-  if (role === 'bar' || role.includes('bar')) return 'bar';
-  if (role.includes('chamador')) return 'chamador';
-  return role || 'outros';
-};
+const toRoleBucket = (roleName: string) => normalizeRole(roleName) || 'outros';
 
 const bucketTitle = (bucket: string) => {
-  if (bucket === 'supervisor') return 'Gestores';
-  if (bucket === 'chamador') return 'Chamadores';
-  if (bucket === 'gerente') return 'Gerentes';
-  if (bucket === 'staff') return 'Staff';
-  if (bucket === 'cozinha') return 'Cozinha';
-  if (bucket === 'bar') return 'Bar';
-  return bucket
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+  const normalized = normalizeRole(bucket).replace(/_/g, ' ').trim();
+  if (!normalized) return 'Outros';
+  return normalized
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 };
 
@@ -159,6 +150,10 @@ const defaultSourceRatios: SourceRatios = {
   FINANCEIRO: 0,
   ABSOLUTE_EXTERNAL: 0,
 };
+
+const ACERTO_SESSION_PREFIX = 'acerto-final-form';
+const buildAcertoSessionKey = (restId: number, from: string, to: string) =>
+  `${ACERTO_SESSION_PREFIX}:${restId}:${from}:${to}`;
 
 const toNumberSafe = (value: any): number => {
   const parsed = Number(value);
@@ -260,17 +255,21 @@ const computeSourceAllocationForRow = (
 };
 
 const computeSnapshotEntryEffectiveValue = (
-  entry: Pick<SnapshotEntry, 'valor_pago' | 'valor_direto'>,
+  entry: Pick<SnapshotEntry, 'valor_pago' | 'valor_direto' | 'desconto'>,
   sourceRatios: SourceRatios,
 ) => {
   const paid = round2(Math.max(toNumberSafe(entry.valor_pago), 0));
   const direct = round2(Math.max(toNumberSafe(entry.valor_direto), 0));
+  const desconto = round2(Math.max(toNumberSafe(entry.desconto), 0));
 
+  let gross: number;
   if (isExternalOnlyRatios(sourceRatios)) {
-    return round2(direct > 0 ? direct : paid);
+    gross = round2(direct > 0 ? direct : paid);
+  } else {
+    gross = round2(paid + direct);
   }
 
-  return round2(paid + direct);
+  return round2(Math.max(gross - desconto, 0));
 };
 
 export default function AcertoFinalPage() {
@@ -293,10 +292,24 @@ export default function AcertoFinalPage() {
   const [savedAcerto, setSavedAcerto] = useState<SavedAcertoPeriodo | null>(null);
   const [saving, setSaving] = useState(false);
   const prevSeedRef = useRef<string>('');
+  const formDirtyRef = useRef(false);
+  const [formDirty, setFormDirty] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  const [acertoHistory, setAcertoHistory] = useState<SavedAcertoPeriodo[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  // ── Persist acerto form data to sessionStorage when user edits ─────────
+  useEffect(() => {
+    if (!formDirtyRef.current || !restID || !fromDate || !toDate) return;
+    try {
+      const key = buildAcertoSessionKey(restID, fromDate, toDate);
+      sessionStorage.setItem(key, JSON.stringify({ acertoInputs, formulaMultiplier, formulaOffset }));
+    } catch {}
+  }, [restID, fromDate, toDate, acertoInputs, formulaMultiplier, formulaOffset]);
+  // ──────────────────────────────────────────────────────────────────────
 
   const selectedRestaurant = useMemo(
     () => restaurantes.find((rest) => rest.restID === restID) || null,
@@ -318,6 +331,19 @@ export default function AcertoFinalPage() {
       setRestID(list[0].restID);
     }
   }, [restID, setRestID]);
+
+  const loadAcertoHistory = useCallback(async () => {
+    if (!restID) { setAcertoHistory([]); return; }
+    try {
+      setHistoryLoading(true);
+      const res = await apiClient.listAcertoFinal(restID);
+      setAcertoHistory((res.data || []) as SavedAcertoPeriodo[]);
+    } catch {
+      setAcertoHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [restID]);
 
   const loadPeriodoData = useCallback(async () => {
     if (!restID) return;
@@ -383,6 +409,10 @@ export default function AcertoFinalPage() {
     if (!restID) return;
     loadPeriodoData();
   }, [loadPeriodoData, restID]);
+
+  useEffect(() => {
+    loadAcertoHistory();
+  }, [loadAcertoHistory]);
 
   const bucketConfigs = useMemo(() => {
     const orderedRules = [...regras].sort((a, b) => a.ordem - b.ordem);
@@ -451,14 +481,12 @@ export default function AcertoFinalPage() {
       new Set(funcionarios.map((func) => toRoleBucket(func.funcao))),
     );
 
-    const defaults = ['supervisor', 'chamador', 'gerente', 'staff', 'cozinha', 'bar'];
     const merged = [...new Set([...bucketsFromRules, ...bucketsFromEmployees])];
     const ordered = [
       ...bucketsFromRules,
-      ...defaults.filter((bucket) => merged.includes(bucket) && !bucketsFromRules.includes(bucket)),
       ...merged
-        .filter((bucket) => !bucketsFromRules.includes(bucket) && !defaults.includes(bucket))
-        .sort((a, b) => a.localeCompare(b)),
+        .filter((bucket) => !bucketsFromRules.includes(bucket))
+        .sort((a, b) => a.localeCompare(b, 'pt-PT', { sensitivity: 'base' })),
     ];
 
     return [...new Set(ordered)];
@@ -578,6 +606,29 @@ export default function AcertoFinalPage() {
     }
     prevSeedRef.current = aggregatedSeed;
 
+    // Check sessionStorage for unsaved edits before falling back to defaults
+    if (restID && fromDate && toDate) {
+      try {
+        const formKey = buildAcertoSessionKey(restID, fromDate, toDate);
+        const raw = sessionStorage.getItem(formKey);
+        if (raw) {
+          const stored = JSON.parse(raw);
+          if (stored.acertoInputs && typeof stored.acertoInputs === 'object') {
+            const merged: Record<number, string> = {};
+            aggregatedRows.forEach((row) => {
+              merged[row.funcID] = stored.acertoInputs[row.funcID] ?? '0.00';
+            });
+            setAcertoInputs(merged);
+            if (stored.formulaMultiplier !== undefined) setFormulaMultiplier(stored.formulaMultiplier);
+            if (stored.formulaOffset !== undefined) setFormulaOffset(stored.formulaOffset);
+            formDirtyRef.current = false;
+            setFormDirty(true);
+            return;
+          }
+        }
+      } catch {}
+    }
+
     const nextInputs: Record<number, string> = {};
     aggregatedRows.forEach((row) => {
       nextInputs[row.funcID] = '0.00';
@@ -597,7 +648,9 @@ export default function AcertoFinalPage() {
     }
 
     setAcertoInputs(nextInputs);
-  }, [aggregatedSeed, aggregatedRows, savedAcerto]);
+    formDirtyRef.current = false;
+    setFormDirty(false);
+  }, [aggregatedSeed, aggregatedRows, savedAcerto, restID, fromDate, toDate]);
 
   const groupedRows = useMemo(() => {
     return orderedBuckets
@@ -779,10 +832,23 @@ export default function AcertoFinalPage() {
   }, [calculations.rowsWithCurrent, groupedRows]);
 
   const handleAcertoChange = (funcID: number, value: string) => {
+    formDirtyRef.current = true;
+    setFormDirty(true);
     setAcertoInputs((prev) => ({ ...prev, [funcID]: value }));
   };
 
+  const distributeIndividual = (funcID: number, suggestedValue: number) => {
+    formDirtyRef.current = true;
+    setFormDirty(true);
+    setAcertoInputs((prev) => ({
+      ...prev,
+      [funcID]: round2(Math.max(suggestedValue, 0)).toFixed(2),
+    }));
+  };
+
   const resetToSuggested = () => {
+    formDirtyRef.current = true;
+    setFormDirty(true);
     const next: Record<number, string> = {};
     aggregatedRows.forEach((row) => {
       next[row.funcID] = row.sugeridoAcerto.toFixed(2);
@@ -793,6 +859,8 @@ export default function AcertoFinalPage() {
   };
 
   const applyFormula = () => {
+    formDirtyRef.current = true;
+    setFormDirty(true);
     const multiplier = parseInputValue(formulaMultiplier);
     const offset = parseInputValue(formulaOffset);
 
@@ -816,6 +884,34 @@ export default function AcertoFinalPage() {
       setSaving(true);
       setError('');
 
+      // Check for overlapping periods before saving
+      const overlapRes = await apiClient.checkAcertoOverlap(restID, effectiveFrom, effectiveTo);
+      const overlaps = (overlapRes.data || []) as Array<{ id: number; periodo_inicio: string; periodo_fim: string; isExactMatch: boolean }>;
+
+      if (overlaps.length > 0) {
+        const exactMatch = overlaps.find((o) => o.isExactMatch);
+        const nonExact = overlaps.filter((o) => !o.isExactMatch);
+
+        if (nonExact.length > 0) {
+          const conflictDates = nonExact.map((o) => {
+            const from = new Date(o.periodo_inicio).toLocaleDateString('pt-PT');
+            const to = new Date(o.periodo_fim).toLocaleDateString('pt-PT');
+            return `${from} – ${to}`;
+          }).join(', ');
+          setError(`Não é possível salvar: o período sobrepõe acerto(s) existente(s) (${conflictDates}). Elimine o acerto conflitante primeiro ou ajuste as datas.`);
+          setSaving(false);
+          return;
+        }
+
+        if (exactMatch) {
+          const confirmMsg = `Já existe um acerto para este período (${new Date(exactMatch.periodo_inicio).toLocaleDateString('pt-PT')} – ${new Date(exactMatch.periodo_fim).toLocaleDateString('pt-PT')}). Deseja substituir?`;
+          if (!window.confirm(confirmMsg)) {
+            setSaving(false);
+            return;
+          }
+        }
+      }
+
       const entries = aggregatedRows.map((row) => {
         const manualValue = round2(parseInputValue(acertoInputs[row.funcID]));
         const suggestedValue = round2(row.sugeridoAcerto);
@@ -837,8 +933,13 @@ export default function AcertoFinalPage() {
       });
 
       setSavedAcerto((result.data || null) as SavedAcertoPeriodo | null);
+      // Clear sessionStorage after successful save so next load fetches fresh data
+      formDirtyRef.current = false;
+      setFormDirty(false);
+      try { sessionStorage.removeItem(buildAcertoSessionKey(restID, fromDate || TODAY, toDate || TODAY)); } catch {}
       setInfo('Acerto final guardado com sucesso.');
       setTimeout(() => setInfo(''), 3000);
+      loadAcertoHistory();
     } catch (err: any) {
       const backendMessage = err?.response?.data?.message;
       const normalizedMessage = Array.isArray(backendMessage)
@@ -848,6 +949,34 @@ export default function AcertoFinalPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDeleteAcerto = async (acertoId: number) => {
+    if (!restID) return;
+    if (!window.confirm('Tem a certeza que deseja eliminar este acerto? Esta ação não pode ser desfeita.')) return;
+    try {
+      await apiClient.deleteAcertoFinal(acertoId, restID);
+      setInfo('Acerto eliminado com sucesso.');
+      setTimeout(() => setInfo(''), 3000);
+      loadAcertoHistory();
+      // If the deleted acerto matches current period, clear savedAcerto
+      if (savedAcerto?.id === acertoId) {
+        setSavedAcerto(null);
+      }
+    } catch {
+      setError('Erro ao eliminar acerto.');
+    }
+  };
+
+  const handleViewAcerto = (acerto: SavedAcertoPeriodo) => {
+    const from = new Date(acerto.periodo_inicio).toISOString().split('T')[0];
+    const to = new Date(acerto.periodo_fim).toISOString().split('T')[0];
+    setFromDate(from);
+    setToDate(to);
+  };
+
+  const formatDatePT = (dateStr: string) => {
+    try { return new Date(dateStr).toLocaleDateString('pt-PT'); } catch { return dateStr; }
   };
 
   const hasNegativeBalance =
@@ -966,6 +1095,9 @@ export default function AcertoFinalPage() {
             >
               {saving ? 'Salvando...' : 'Salvar'}
             </button>
+            {formDirty && (
+              <span className={styles.unsavedBadge}><span className={styles.unsavedDot} />Não salvo</span>
+            )}
           </div>
         )}
 
@@ -1016,7 +1148,7 @@ export default function AcertoFinalPage() {
                 type="number"
                 step="0.01"
                 value={formulaMultiplier}
-                onChange={(e) => setFormulaMultiplier(e.target.value)}
+                onChange={(e) => { formDirtyRef.current = true; setFormDirty(true); setFormulaMultiplier(e.target.value); }}
                 placeholder="1.00"
               />
             </div>
@@ -1026,7 +1158,7 @@ export default function AcertoFinalPage() {
                 type="number"
                 step="0.01"
                 value={formulaOffset}
-                onChange={(e) => setFormulaOffset(e.target.value)}
+                onChange={(e) => { formDirtyRef.current = true; setFormDirty(true); setFormulaOffset(e.target.value); }}
                 placeholder="0.00"
               />
             </div>
@@ -1173,14 +1305,25 @@ export default function AcertoFinalPage() {
                             <td>{currency(row.acumuladoPeriodo)}</td>
                             <td>{currency(row.jaRecebidoDiario)}</td>
                             <td>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                className={styles.smallInput}
-                                value={acertoInputs[row.funcID] ?? row.sugeridoAcerto.toFixed(2)}
-                                onChange={(e) => handleAcertoChange(row.funcID, e.target.value)}
-                              />
+                              <div className={styles.rowAcertoField}>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  className={styles.smallInput}
+                                  value={acertoInputs[row.funcID] ?? row.sugeridoAcerto.toFixed(2)}
+                                  onChange={(e) => handleAcertoChange(row.funcID, e.target.value)}
+                                />
+                                <button
+                                  type="button"
+                                  className={`${styles.btnSecondary} ${styles.rowDistributeBtn}`}
+                                  onClick={() => distributeIndividual(row.funcID, row.sugeridoAcerto)}
+                                  disabled={loading}
+                                  aria-label={`Distribuir individual para ${row.name}`}
+                                >
+                                  Distribuir individual
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1199,6 +1342,78 @@ export default function AcertoFinalPage() {
                 </div>
               );
             })
+          )}
+        </section>
+
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <div>
+              <h2>Histórico de Acertos</h2>
+              <p>
+                Lista de todos os acertos finais realizados para este restaurante.
+                Utilize "Ver" para carregar o período ou "Eliminar" para remover.
+              </p>
+            </div>
+          </div>
+
+          {historyLoading && <div className={styles.info}>Carregando histórico...</div>}
+          {!historyLoading && acertoHistory.length === 0 && (
+            <div className={styles.info}>Nenhum acerto final realizado ainda para este restaurante.</div>
+          )}
+          {!historyLoading && acertoHistory.length > 0 && (
+            <div className={styles.tableWrapper}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Período</th>
+                    <th>Criado em</th>
+                    <th>Atualizado em</th>
+                    <th>Funcionários</th>
+                    <th>Total distribuído</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {acertoHistory.map((acerto) => {
+                    const totalDistributed = round2(
+                      (acerto.entries || []).reduce((sum, e) => sum + (e.valor_manual || 0), 0),
+                    );
+                    const uniqueEmployees = new Set((acerto.entries || []).map((e) => e.funcID)).size;
+                    return (
+                      <tr key={acerto.id}>
+                        <td>
+                          {formatDatePT(acerto.periodo_inicio)} – {formatDatePT(acerto.periodo_fim)}
+                        </td>
+                        <td>{acerto.criadoEm ? formatDatePT(acerto.criadoEm) : '—'}</td>
+                        <td>{acerto.atualizadoEm ? formatDatePT(acerto.atualizadoEm) : '—'}</td>
+                        <td>{uniqueEmployees}</td>
+                        <td>{currency(totalDistributed)}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              type="button"
+                              className={styles.btnSecondary}
+                              style={{ padding: '4px 10px', fontSize: 12 }}
+                              onClick={() => handleViewAcerto(acerto)}
+                            >
+                              Ver
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.btnDanger}
+                              style={{ padding: '4px 10px', fontSize: 12 }}
+                              onClick={() => handleDeleteAcerto(acerto.id)}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
       </div>

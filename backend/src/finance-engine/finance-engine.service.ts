@@ -104,23 +104,8 @@ export class FinanceEngineService {
     const tipPoolRemainingAfterRules = this.round2(
       Math.max(recomputed.bucket_balances.tip_pool_remaining ?? 0, 0),
     );
-    const tipPoolCoveredBuckets = new Set(
-      roleBreakdown
-        .filter(
-          (line) =>
-            line.payment_pool === PaymentSource.TIP_POOL &&
-            Number(line.paid_amount || 0) > 0,
-        )
-        .map((line) => this.toRoleBucket(line.role_name)),
-    );
-    const remainderFallback = this.buildKitchenBarRemainderLines(
-      tipPoolRemainingAfterRules,
-      tipPoolCoveredBuckets,
-      funcionarios,
-    );
-    if (remainderFallback.lines.length) {
-      roleBreakdown.push(...remainderFallback.lines);
-    }
+    // No automatic remainder distribution — all distribution must
+    // be configured via explicit rules with appropriate ordem.
 
     const employeeBreakdown: EmployeePayoutLine[] = [];
 
@@ -188,7 +173,7 @@ export class FinanceEngineService {
         employeeBreakdown.push({
           rule_id: roleLine.rule_id,
           role_name: roleLine.role_name,
-          role_bucket: this.toRoleBucket(roleLine.role_name),
+          role_bucket: this.normalizeRole(roleLine.role_name),
           funcID: null,
           employee_name: null,
           calculation_type: roleLine.calculation_type,
@@ -208,7 +193,7 @@ export class FinanceEngineService {
         employeeBreakdown.push({
           rule_id: roleLine.rule_id,
           role_name: roleLine.role_name,
-          role_bucket: this.toRoleBucket(roleLine.role_name),
+          role_bucket: this.normalizeRole(roleLine.role_name),
           funcID: emp.funcID,
           employee_name: emp.name,
           calculation_type: roleLine.calculation_type,
@@ -225,9 +210,7 @@ export class FinanceEngineService {
     }
 
     const totals = this.rebuildTotals(roleBreakdown);
-    const finalTipPoolRemaining = this.round2(
-      Math.max(tipPoolRemainingAfterRules - remainderFallback.distributed, 0),
-    );
+    const finalTipPoolRemaining = tipPoolRemainingAfterRules;
     const expectedFromPool = this.round2(
       tipPoolInitial - finalTipPoolRemaining,
     );
@@ -446,97 +429,7 @@ export class FinanceEngineService {
   }
 
   private isRoleMatch(ruleRole: string, employeeRole: string): boolean {
-    const r = this.normalizeRole(ruleRole);
-    const e = this.normalizeRole(employeeRole);
-
-    if (r === e) return true;
-
-    const staffAliases = new Set(['staff', 'garcom', 'garcom(a)', 'garcon']);
-    if (staffAliases.has(r) && staffAliases.has(e)) return true;
-
-    const ruleBucket = this.toRoleBucket(r);
-    const employeeBucket = this.toRoleBucket(e);
-    const bucketAliases = new Set([
-      'staff',
-      'gerente',
-      'supervisor',
-      'cozinha',
-      'chamador',
-      'bar',
-    ]);
-    if (bucketAliases.has(ruleBucket) && ruleBucket === employeeBucket) return true;
-
-    return false;
-  }
-
-  private toRoleBucket(roleName: string): string {
-    const role = this.normalizeRole(roleName);
-    if (role === 'staff' || role.includes('garcom')) return 'staff';
-    if (role.includes('gestor') || role.includes('gerente')) return 'gerente';
-    if (role.includes('supervisor') || role.includes('chefe de turno') || role.includes('chefe turno')) return 'supervisor';
-    if (role.includes('cozinha')) return 'cozinha';
-    if (role === 'bar' || role.includes('bar') || role.includes('balcao')) return 'bar';
-    if (role.includes('chamador')) return 'chamador';
-    return role || 'outros';
-  }
-
-  private buildKitchenBarRemainderLines(
-    tipPoolRemaining: number,
-    tipPoolCoveredBuckets: Set<string>,
-    funcionarios: Array<{ funcID: number; name: string; funcao: string }>,
-  ): { lines: RoleBreakdown[]; distributed: number } {
-    const available = this.round2(Math.max(tipPoolRemaining, 0));
-    if (available <= 0) return { lines: [], distributed: 0 };
-
-    const targets = ['cozinha', 'bar']
-      .filter((bucket) => !tipPoolCoveredBuckets.has(bucket))
-      .map((bucket) => ({
-        bucket,
-        count: funcionarios.filter((f) => this.toRoleBucket(f.funcao) === bucket)
-          .length,
-      }));
-
-    if (!targets.length) return { lines: [], distributed: 0 };
-
-    const totalCount = targets.reduce((sum, target) => sum + target.count, 0);
-    const hasAnyEmployeeForTargets = totalCount > 0;
-
-    const lines: RoleBreakdown[] = [];
-    let remaining = available;
-    let distributed = 0;
-
-    targets.forEach((target, idx) => {
-      const proportional = !hasAnyEmployeeForTargets
-        ? idx === 0
-          ? remaining
-          : 0
-        : idx === targets.length - 1
-          ? remaining
-          : this.round2((available * target.count) / totalCount);
-      const amount = this.round2(Math.min(Math.max(proportional, 0), remaining));
-      if (amount <= 0) return;
-
-      distributed = this.round2(distributed + amount);
-      remaining = this.round2(remaining - amount);
-
-      lines.push({
-        rule_id: -950000 - idx,
-        role_name: target.bucket,
-        calculation_type: CalculationType.FIXED_AMOUNT,
-        calculation_pool: null,
-        percent_mode: PercentMode.ABSOLUTE_PERCENT,
-        split_mode: EmployeeSplitMode.EQUAL_SPLIT,
-        payment_pool: PaymentSource.TIP_POOL,
-        rate: amount,
-        base_value: available,
-        theoretical_amount: amount,
-        paid_amount: amount,
-        unpaid_amount: 0,
-        role_amount: amount,
-      });
-    });
-
-    return { lines, distributed };
+    return this.normalizeRole(ruleRole) === this.normalizeRole(employeeRole);
   }
 
   private resolvePercentModeForRule(rule: {
@@ -591,13 +484,6 @@ export class FinanceEngineService {
     // - legacy staff % over tip pool should keep per-employee proportional split.
     if (rule.payment_source === PaymentSource.ABSOLUTE_EXTERNAL) {
       return EmployeeSplitMode.DIRECT_INPUT_ONLY;
-    }
-    if (
-      this.toRoleBucket(rule.role_name) === 'staff' &&
-      rule.calculation_type === CalculationType.PERCENT &&
-      rule.calculation_base === CalculationBase.VALOR_TOTAL_GORJETAS
-    ) {
-      return EmployeeSplitMode.PROPORTIONAL_TO_POOL_INPUT;
     }
     return EmployeeSplitMode.EQUAL_SPLIT;
   }

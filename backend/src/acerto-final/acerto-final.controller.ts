@@ -27,6 +27,26 @@ export class AcertoFinalController {
     return this.acertoFinalService.save(restID, dto);
   }
 
+  @Get('list')
+  async list(
+    @Query('restID', ParseIntPipe) restID: number,
+    @CurrentUser() user: any,
+  ) {
+    assertRestaurantAccess(user, restID);
+    return this.acertoFinalService.listByRestaurant(restID);
+  }
+
+  @Get('check-overlap')
+  async checkOverlap(
+    @Query('restID', ParseIntPipe) restID: number,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @CurrentUser() user: any,
+  ) {
+    assertRestaurantAccess(user, restID);
+    return this.acertoFinalService.checkOverlap(restID, from, to);
+  }
+
   @Get()
   async findByPeriod(
     @Query('restID', ParseIntPipe) restID: number,

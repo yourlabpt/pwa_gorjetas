@@ -14,6 +14,11 @@ http://localhost:3001
 curl -X GET "http://localhost:3001/funcionarios?restID=1&ativo=true"
 ```
 
+To include logically deleted employees for technical audit:
+```bash
+curl -X GET "http://localhost:3001/funcionarios?restID=1&includeDeleted=true"
+```
+
 Response:
 ```json
 [
@@ -52,18 +57,27 @@ curl -X PUT http://localhost:3001/funcionarios/1 \
   }'
 ```
 
-### Delete Employee (Soft Delete)
+### Delete Employee (Logical Delete)
 ```bash
 curl -X DELETE http://localhost:3001/funcionarios/1
 ```
 
+This action hides the employee from normal frontend and operational flows, but preserves the record for audit and restore.
+
+### Restore Employee
+```bash
+curl -X PUT http://localhost:3001/funcionarios/1/restore
+```
+
+Restore clears the logical deletion marker and returns the employee as inactive, so activation remains a separate explicit action.
+
 ---
 
-## Configuracao Gorjetas (Tip Configuration)
+## Configuracao de Acerto (Tip/Settlement Configuration)
 
 ### List Configurations
 ```bash
-curl -X GET "http://localhost:3001/configuracao-gorjetas?restID=1"
+curl -X GET "http://localhost:3001/configuracao-acerto?restID=1"
 ```
 
 Response:
@@ -101,7 +115,7 @@ Response:
 
 ### Create Configuration
 ```bash
-curl -X POST http://localhost:3001/configuracao-gorjetas \
+curl -X POST http://localhost:3001/configuracao-acerto \
   -H "Content-Type: application/json" \
   -d '{
     "restID": 1,
@@ -112,7 +126,7 @@ curl -X POST http://localhost:3001/configuracao-gorjetas \
 
 ### Update Configuration
 ```bash
-curl -X PUT http://localhost:3001/configuracao-gorjetas/1 \
+curl -X PUT http://localhost:3001/configuracao-acerto/1 \
   -H "Content-Type: application/json" \
   -d '{
     "percentagem": 7.5
@@ -374,7 +388,7 @@ curl -X POST http://localhost:3001/funcionarios \
 
 ### 2. Verify Configurations
 ```bash
-curl -X GET "http://localhost:3001/configuracao-gorjetas?restID=1"
+curl -X GET "http://localhost:3001/configuracao-acerto?restID=1"
 ```
 
 ### 3. Create Sample Transactions

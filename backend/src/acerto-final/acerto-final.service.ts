@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SaveAcertoFinalDto } from './dto/save-acerto-final.dto';
 import { Prisma } from '@prisma/client';
@@ -25,6 +25,31 @@ export class AcertoFinalService {
     await this.prisma.restaurante.findUniqueOrThrow({
       where: { restID },
     });
+
+    // Check for overlapping periods (excluding exact match which is an upsert)
+    const overlapping = await this.findOverlapping(restID, inicio, fim);
+    const exactMatch = overlapping.find(
+      (r) =>
+        r.periodo_inicio.getTime() === inicio.getTime() &&
+        r.periodo_fim.getTime() === fim.getTime(),
+    );
+    const nonExactOverlaps = overlapping.filter(
+      (r) =>
+        r.periodo_inicio.getTime() !== inicio.getTime() ||
+        r.periodo_fim.getTime() !== fim.getTime(),
+    );
+
+    if (nonExactOverlaps.length > 0) {
+      const conflictInfo = nonExactOverlaps.map((r) => ({
+        id: r.id,
+        periodo_inicio: r.periodo_inicio,
+        periodo_fim: r.periodo_fim,
+      }));
+      throw new ConflictException({
+        message: 'O período selecionado sobrepõe acerto(s) existente(s).',
+        conflicts: conflictInfo,
+      });
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.acertoFinalPeriodo.findUnique({
@@ -108,6 +133,51 @@ export class AcertoFinalService {
     await this.prisma.acertoFinalPeriodo.delete({
       where: { id },
     });
+  }
+
+  async listByRestaurant(restID: number) {
+    const records = await this.prisma.acertoFinalPeriodo.findMany({
+      where: { restID },
+      include: {
+        entries: {
+          orderBy: { funcID: 'asc' },
+        },
+      },
+      orderBy: { periodo_fim: 'desc' },
+    });
+
+    return records.map((r) => this.mapToResponse(r));
+  }
+
+  async checkOverlap(restID: number, from: string, to: string) {
+    const inicio = this.normalizeDate(from);
+    const fim = this.normalizeDate(to);
+    const overlapping = await this.findOverlapping(restID, inicio, fim);
+    return overlapping.map((r) => ({
+      id: r.id,
+      periodo_inicio: r.periodo_inicio,
+      periodo_fim: r.periodo_fim,
+      isExactMatch:
+        r.periodo_inicio.getTime() === inicio.getTime() &&
+        r.periodo_fim.getTime() === fim.getTime(),
+    }));
+  }
+
+  private async findOverlapping(
+    restID: number,
+    inicio: Date,
+    fim: Date,
+    excludeId?: number,
+  ) {
+    const where: any = {
+      restID,
+      periodo_inicio: { lte: fim },
+      periodo_fim: { gte: inicio },
+    };
+    if (excludeId) {
+      where.id = { not: excludeId };
+    }
+    return this.prisma.acertoFinalPeriodo.findMany({ where });
   }
 
   private async findByIdInternal(tx: any, id: number) {

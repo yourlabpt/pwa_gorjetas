@@ -69,8 +69,12 @@ export default function Navigation() {
     };
   }, [isOpen]);
 
-  const handleLogout = () => {
-    apiClient.setAuthToken(null);
+  const handleLogout = async () => {
+    try {
+      await apiClient.logout();
+    } catch {
+      apiClient.setAuthToken(null);
+    }
     clearSessionPageState();
     setUserEmail(null);
     setUserRole(null);
@@ -159,6 +163,13 @@ export default function Navigation() {
                 Relatórios
               </Link>
             </li>
+            {userRole === 'SUPER_ADMIN' && (
+              <li>
+                <Link href="/auditoria" className={styles.navLink} onClick={closeMenu}>
+                  Auditoria
+                </Link>
+              </li>
+            )}
             <li>
               <Link href="/configuracao" className={styles.navLink} onClick={closeMenu}>
                 Configuração

@@ -6,10 +6,15 @@ import {
   ConfiguracaoAcertoResponseDto,
 } from './dto';
 import { Prisma } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { AuditAction, AuditEntity } from '@prisma/client';
 
 @Injectable()
 export class ConfiguracaoAcertoService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private eventEmitter: EventEmitter2,
+  ) {}
 
   private normalizeFuncaoLabel(funcao: string): string {
     return (funcao || '').trim().replace(/gestor/gi, 'Gerente');
@@ -102,6 +107,20 @@ export class ConfiguracaoAcertoService {
       },
     });
 
+    // Emit audit event
+    this.eventEmitter.emit('audit.action', {
+      requestId: (global as any).requestId,
+      userId: (global as any).userId,
+      restID,
+      action: AuditAction.CREATED,
+      entity: AuditEntity.ConfiguracaoAcerto,
+      entityId: config.id.toString(),
+      status: 'SUCCESS',
+      valuesAfter: config,
+      ipAddress: (global as any).ipAddress,
+      userAgent: (global as any).userAgent,
+      duration: (global as any).requestDuration,
+    });
     return this.mapToResponse(config);
   }
 
@@ -189,6 +208,21 @@ export class ConfiguracaoAcertoService {
       },
     });
 
+    // Emit audit event
+    this.eventEmitter.emit('audit.action', {
+      requestId: (global as any).requestId,
+      userId: (global as any).userId,
+      restID: config.restID,
+      action: AuditAction.UPDATED,
+      entity: AuditEntity.ConfiguracaoAcerto,
+      entityId: id.toString(),
+      status: 'SUCCESS',
+      valuesBefore: config,
+      valuesAfter: atualizado,
+      ipAddress: (global as any).ipAddress,
+      userAgent: (global as any).userAgent,
+      duration: (global as any).requestDuration,
+    });
     return this.mapToResponse(atualizado);
   }
 
@@ -207,6 +241,21 @@ export class ConfiguracaoAcertoService {
     await this.prisma.configuracaoAcerto.update({
       where: { id },
       data: { ativo: false },
+    });
+
+    // Emit audit event
+    this.eventEmitter.emit('audit.action', {
+      requestId: (global as any).requestId,
+      userId: (global as any).userId,
+      restID: config.restID,
+      action: AuditAction.DELETED,
+      entity: AuditEntity.ConfiguracaoAcerto,
+      entityId: id.toString(),
+      status: 'SUCCESS',
+      valuesBefore: config,
+      ipAddress: (global as any).ipAddress,
+      userAgent: (global as any).userAgent,
+      duration: (global as any).requestDuration,
     });
   }
 

@@ -139,7 +139,7 @@ curl http://localhost:3001/funcionarios?restID=1
 
 **Database** (should show 4 employees):
 ```bash
-docker exec pwa_restaurantes_db psql -U postgres -d gorjetas -c 'SELECT COUNT(*) FROM "Funcionario";'
+docker exec pwa_restaurantes_db psql -U app -d app -c 'SELECT COUNT(*) FROM users;'
 ```
 
 If all three show data → **Setup succeeded!** ✅

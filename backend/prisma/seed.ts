@@ -71,7 +71,7 @@ async function main() {
     prisma.regraDistribuicao.create({
       data: {
         restID: restaurante.restID,
-        role_name: 'garcom',
+        role_name: 'staff',
         calculation_type: 'PERCENT',
         calculation_base: 'VALOR_TOTAL_GORJETAS',
         rate: new Decimal('7.00'),

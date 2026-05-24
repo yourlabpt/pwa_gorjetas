@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { apiClient } from '../lib/api';
@@ -39,6 +39,7 @@ interface SnapshotEntry {
   valor_teorico: number;
   valor_pago: number;
   valor_nao_pago?: number;
+  desconto?: number;
 }
 
 interface SnapshotPresencaEntry {
@@ -66,9 +67,17 @@ interface FuncionarioInfo {
 
 interface RegraDistribuicao {
   role_name: string;
+  payment_source?: 'TIP_POOL' | 'FINANCEIRO' | 'ABSOLUTE_EXTERNAL';
+  rate?: number;
   tipo_de_acerto?: 'DIARIO' | 'PERIODO';
   ordem: number;
   ativo?: boolean;
+}
+
+interface SourceRatios {
+  TIP_POOL: number;
+  FINANCEIRO: number;
+  ABSOLUTE_EXTERNAL: number;
 }
 
 type SettlementModeSummary = 'DIARIO' | 'PERIODO' | 'MISTO';
@@ -77,6 +86,7 @@ interface BucketConfig {
   bucket: string;
   settlementMode: SettlementModeSummary;
   dailyShare: number;
+  sourceRatios: SourceRatios;
 }
 
 interface GroupedEmployeeRow {
@@ -94,8 +104,32 @@ interface GroupedEmployeeRow {
   aReceberPeriodo: number;
 }
 
+interface AcertoEntry {
+  funcID: number;
+  bucket: string;
+  valor_sugerido: number;
+  valor_manual: number;
+  is_manual_override: boolean;
+  notas?: string | null;
+}
+
+interface AcertoPeriodo {
+  id: number;
+  restID: number;
+  periodo_inicio: string;
+  periodo_fim: string;
+  criadoEm?: string;
+  atualizadoEm?: string;
+  entries: AcertoEntry[];
+}
+
 const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'GERENTE'];
 const round2 = (value: number) => Math.round(value * 100) / 100;
+const defaultSourceRatios: SourceRatios = {
+  TIP_POOL: 1,
+  FINANCEIRO: 0,
+  ABSOLUTE_EXTERNAL: 0,
+};
 const normalizeRole = (funcao: string) =>
   (funcao || '')
     .toLowerCase()
@@ -118,14 +152,42 @@ const toNumberSafe = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const getEffectiveSnapshotValue = (entry: SnapshotEntry) => {
-  const bucket = toRoleBucket(entry.employee_funcao || entry.role);
+const weightForRule = (rule: RegraDistribuicao): number => {
+  const rate = Math.abs(toNumberSafe(rule.rate));
+  return rate > 0 ? rate : 1;
+};
+
+const normalizeSourceRatios = (weights: SourceRatios): SourceRatios => {
+  const total = weights.TIP_POOL + weights.FINANCEIRO + weights.ABSOLUTE_EXTERNAL;
+  if (total <= 0) return { ...defaultSourceRatios };
+  return {
+    TIP_POOL: weights.TIP_POOL / total,
+    FINANCEIRO: weights.FINANCEIRO / total,
+    ABSOLUTE_EXTERNAL: weights.ABSOLUTE_EXTERNAL / total,
+  };
+};
+
+const isExternalOnlyRatios = (ratios: SourceRatios) =>
+  ratios.ABSOLUTE_EXTERNAL > 0.999 &&
+  ratios.TIP_POOL < 0.001 &&
+  ratios.FINANCEIRO < 0.001;
+
+const getEffectiveSnapshotValue = (
+  entry: SnapshotEntry,
+  sourceRatios: SourceRatios,
+) => {
   const paid = round2(Math.max(toNumberSafe(entry.valor_pago), 0));
   const direct = round2(Math.max(toNumberSafe(entry.valor_direto), 0));
+  const desconto = round2(Math.max(toNumberSafe(entry.desconto), 0));
 
-  if (bucket === 'staff') return round2(paid + direct);
-  if (bucket === 'chamador') return round2(direct > 0 ? direct : paid);
-  return paid;
+  let gross: number;
+  if (isExternalOnlyRatios(sourceRatios)) {
+    gross = round2(direct > 0 ? direct : paid);
+  } else {
+    gross = round2(paid + direct);
+  }
+
+  return round2(Math.max(gross - desconto, 0));
 };
 
 export default function Relatorios() {
@@ -141,6 +203,9 @@ export default function Relatorios() {
   const [fromDate, setFromDate] = useSessionPageState<string>('fromDate', '');
   const [toDate, setToDate] = useSessionPageState<string>('toDate', '');
   const [snapshots, setSnapshots] = useState<SnapshotDay[]>([]);
+  const [acertoHistory, setAcertoHistory] = useState<AcertoPeriodo[]>([]);
+  const [acertoLoading, setAcertoLoading] = useState(false);
+  const [expandedAcertoIds, setExpandedAcertoIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -164,6 +229,7 @@ export default function Relatorios() {
     if (!restID) return;
     fetchFuncionarios();
     fetchRegrasDistribuicao();
+    loadAcertoHistory();
   }, [restID]);
 
   useEffect(() => {
@@ -226,6 +292,42 @@ export default function Relatorios() {
     }
   };
 
+  const loadAcertoHistory = async () => {
+    if (!restID) return;
+    setAcertoLoading(true);
+    try {
+      const res = await apiClient.listAcertoFinal(restID);
+      setAcertoHistory(res.data || []);
+    } catch {
+      setAcertoHistory([]);
+    } finally {
+      setAcertoLoading(false);
+    }
+  };
+
+  const toggleAcertoExpand = (id: number) => {
+    setExpandedAcertoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const formatDatePT = (dateStr: string) => {
+    try {
+      return new Date(dateStr).toLocaleDateString('pt-PT', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
   const bucketTitle = (bucket: string) => {
     if (bucket === 'supervisor') return 'Gestores';
     if (bucket === 'chamador') return 'Chamadores';
@@ -261,27 +363,53 @@ export default function Relatorios() {
     const configByBucket = new Map<string, BucketConfig>();
 
     grouped.forEach((rulesInBucket, bucket) => {
-      const dailyRules = rulesInBucket.filter(
-        (rule) => (rule.tipo_de_acerto || 'DIARIO') !== 'PERIODO',
-      ).length;
-      const periodRules = rulesInBucket.length - dailyRules;
-      const totalRules = rulesInBucket.length;
+      const sourceWeights: SourceRatios = {
+        TIP_POOL: 0,
+        FINANCEIRO: 0,
+        ABSOLUTE_EXTERNAL: 0,
+      };
+      let dailyWeight = 0;
+      let periodWeight = 0;
 
-      const dailyShare = totalRules > 0 ? round2(dailyRules / totalRules) : 1;
+      rulesInBucket.forEach((rule) => {
+        const weight = weightForRule(rule);
+        const source = rule.payment_source || 'TIP_POOL';
+        sourceWeights[source] += weight;
+
+        if ((rule.tipo_de_acerto || 'DIARIO') === 'PERIODO') {
+          periodWeight += weight;
+        } else {
+          dailyWeight += weight;
+        }
+      });
+
+      const sourceRatios = normalizeSourceRatios(sourceWeights);
+      const totalWeight = dailyWeight + periodWeight;
+      const dailyShare = totalWeight > 0 ? round2(dailyWeight / totalWeight) : 1;
 
       let settlementMode: SettlementModeSummary = 'DIARIO';
-      if (dailyRules > 0 && periodRules > 0) settlementMode = 'MISTO';
-      else if (periodRules > 0) settlementMode = 'PERIODO';
+      if (dailyWeight > 0 && periodWeight > 0) settlementMode = 'MISTO';
+      else if (periodWeight > 0) settlementMode = 'PERIODO';
 
       configByBucket.set(bucket, {
         bucket,
         settlementMode,
         dailyShare,
+        sourceRatios,
       });
     });
 
     return configByBucket;
   }, [regras]);
+
+  const resolveEntryBucket = useCallback(
+    (entry: SnapshotEntry) => {
+      const employeeRole =
+        entry.funcID != null ? funcionarios[entry.funcID]?.funcao : undefined;
+      return toRoleBucket(employeeRole || entry.employee_funcao || entry.role);
+    },
+    [funcionarios],
+  );
 
   const groupedEmployeeReport = useMemo(() => {
     if (snapshots.length === 0) return [];
@@ -303,9 +431,7 @@ export default function Relatorios() {
       day.entries.forEach((e) => {
         if (e.funcID == null) return;
         const employeeFromMap = funcionarios[e.funcID];
-        const bucket = employeeFromMap?.funcao
-          ? toRoleBucket(employeeFromMap.funcao)
-          : toRoleBucket(e.employee_funcao || e.role);
+        const bucket = resolveEntryBucket(e);
         const config = bucketConfigs.get(bucket);
         const name = employeeFromMap?.name || e.employee_name || `Func ${e.funcID}`;
 
@@ -329,7 +455,7 @@ export default function Relatorios() {
         agg[e.funcID].settlementMode = config?.settlementMode || agg[e.funcID].settlementMode;
         agg[e.funcID].name = name;
         agg[e.funcID].efetivo = round2(
-          agg[e.funcID].efetivo + getEffectiveSnapshotValue(e),
+          agg[e.funcID].efetivo + getEffectiveSnapshotValue(e, config?.sourceRatios || defaultSourceRatios),
         );
         agg[e.funcID].pagoBruto = round2(
           agg[e.funcID].pagoBruto + toNumberSafe(e.valor_pago),
@@ -408,7 +534,7 @@ export default function Relatorios() {
           return byName !== 0 ? byName : a.funcID - b.funcID;
         }),
     }));
-  }, [bucketConfigs, funcionarios, orderedRuleBuckets, snapshots]);
+  }, [bucketConfigs, funcionarios, orderedRuleBuckets, resolveEntryBucket, snapshots]);
 
   const summaryTotals = useMemo(() => {
     const totals = {
@@ -673,6 +799,96 @@ export default function Relatorios() {
             <section className={styles.section}>
               <div className={styles.sectionHeader}>
                 <div>
+                  <h2>Acertos Finais Realizados</h2>
+                  <p>Histórico de todos os acertos de período registados para este restaurante.</p>
+                </div>
+              </div>
+              {acertoLoading ? (
+                <div className={styles.info}>A carregar acertos...</div>
+              ) : acertoHistory.length === 0 ? (
+                <div className={styles.info}>Nenhum acerto final registado.</div>
+              ) : (
+                <div className={styles.transactionsList}>
+                  {acertoHistory.map((acerto) => {
+                    const isExpanded = expandedAcertoIds.has(acerto.id);
+                    const totalDistribuido = acerto.entries.reduce(
+                      (sum, e) => sum + (e.is_manual_override ? e.valor_manual : e.valor_sugerido),
+                      0,
+                    );
+                    const inicio = new Date(acerto.periodo_inicio).toLocaleDateString('pt-PT');
+                    const fim = new Date(acerto.periodo_fim).toLocaleDateString('pt-PT');
+                    return (
+                      <div key={acerto.id} className={styles.card}>
+                        <div
+                          className={styles.cardHeader}
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => toggleAcertoExpand(acerto.id)}
+                        >
+                          <h3>{inicio} — {fim}</h3>
+                          <span className={styles.badge}>
+                            {acerto.entries.length} funcionário(s) · € {totalDistribuido.toFixed(2)}
+                          </span>
+                        </div>
+                        {acerto.criadoEm && (
+                          <div style={{ padding: '0 16px 8px', fontSize: '0.82rem', color: '#666' }}>
+                            Criado: {formatDatePT(acerto.criadoEm)}
+                            {acerto.atualizadoEm && acerto.atualizadoEm !== acerto.criadoEm && (
+                              <> · Atualizado: {formatDatePT(acerto.atualizadoEm)}</>
+                            )}
+                          </div>
+                        )}
+                        {isExpanded && (
+                          <div className={styles.tableWrapper} style={{ marginTop: '4px' }}>
+                            <table className={styles.table}>
+                              <thead>
+                                <tr>
+                                  <th>Funcionário</th>
+                                  <th>Bucket</th>
+                                  <th>Valor Sugerido (€)</th>
+                                  <th>Valor Manual (€)</th>
+                                  <th>Override</th>
+                                  <th>Notas</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {acerto.entries.map((entry) => {
+                                  const empName =
+                                    funcionarios[entry.funcID]?.name || `ID #${entry.funcID}`;
+                                  return (
+                                    <tr key={entry.funcID}>
+                                      <td>
+                                        <div className={styles.nameCell}>
+                                          <span className={styles.avatar}>
+                                            {empName.slice(0, 1).toUpperCase()}
+                                          </span>
+                                          <div>
+                                            <div className={styles.name}>{empName}</div>
+                                            <div className={styles.metaText}>ID #{entry.funcID}</div>
+                                          </div>
+                                        </div>
+                                      </td>
+                                      <td>{entry.bucket}</td>
+                                      <td>€ {entry.valor_sugerido.toFixed(2)}</td>
+                                      <td>€ {entry.valor_manual.toFixed(2)}</td>
+                                      <td>{entry.is_manual_override ? 'Sim' : 'Não'}</td>
+                                      <td>{entry.notas || '—'}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className={styles.section}>
+              <div className={styles.sectionHeader}>
+                <div>
                   <h2>Fechamento por dia (snapshots)</h2>
                   <p>Mostra o que foi salvo no Financeiro Diário para cada dia.</p>
                 </div>
@@ -684,21 +900,26 @@ export default function Relatorios() {
                 <div className={styles.transactionsList}>
                   {snapshots.map((day) => {
                     const dateLabel = new Date(day.data).toLocaleDateString('pt-BR');
-                    const staff = day.entries.filter((e) => toRoleBucket(e.role) === 'staff');
-                    const gerentes = day.entries.filter((e) => toRoleBucket(e.role) === 'gerente');
-                    const supervisores = day.entries.filter((e) => toRoleBucket(e.role) === 'supervisor');
-                    const chamadores = day.entries.filter((e) => toRoleBucket(e.role) === 'chamador');
+                    const staff = day.entries.filter((e) => resolveEntryBucket(e) === 'staff');
+                    const gerentes = day.entries.filter((e) => resolveEntryBucket(e) === 'gerente');
+                    const supervisores = day.entries.filter((e) => resolveEntryBucket(e) === 'supervisor');
+                    const chamadores = day.entries.filter((e) => resolveEntryBucket(e) === 'chamador');
                     const cozinha = day.entries.filter((e) => {
-                      const bucket = toRoleBucket(e.role);
+                      const bucket = resolveEntryBucket(e);
                       return bucket === 'cozinha' || bucket === 'bar';
                     });
 
                     const sum = (arr: SnapshotEntry[], field: keyof SnapshotEntry) =>
                       arr.reduce((acc, curr) => acc + (curr[field] as number), 0);
                     const sumEffective = (arr: SnapshotEntry[]) =>
-                      arr.reduce((acc, curr) => acc + getEffectiveSnapshotValue(curr), 0);
+                      arr.reduce((acc, curr) => {
+                        const bucket = resolveEntryBucket(curr);
+                        const sourceRatios =
+                          bucketConfigs.get(bucket)?.sourceRatios || defaultSourceRatios;
+                        return acc + getEffectiveSnapshotValue(curr, sourceRatios);
+                      }, 0);
                     const dayBuckets = Array.from(
-                      new Set(day.entries.map((entry) => toRoleBucket(entry.role))),
+                      new Set(day.entries.map((entry) => resolveEntryBucket(entry))),
                     );
                     const dayOrderedBuckets = [
                       ...orderedRuleBuckets.filter((bucket) => dayBuckets.includes(bucket)),
@@ -716,8 +937,8 @@ export default function Relatorios() {
                         .sort((a, b) => a.localeCompare(b)),
                     ];
                     const sortedEntries = [...day.entries].sort((a, b) => {
-                      const bucketA = toRoleBucket(a.role);
-                      const bucketB = toRoleBucket(b.role);
+                      const bucketA = resolveEntryBucket(a);
+                      const bucketB = resolveEntryBucket(b);
                       const idxA = dayOrderedBuckets.indexOf(bucketA);
                       const idxB = dayOrderedBuckets.indexOf(bucketB);
                       if (idxA !== idxB) return idxA - idxB;
@@ -784,7 +1005,7 @@ export default function Relatorios() {
                             <tbody>
                               {sortedEntries.map((e, idx) => (
                                 <tr key={`${day.data}-${idx}`}>
-                                  <td>{toRoleBucket(e.role)}</td>
+                                  <td>{resolveEntryBucket(e)}</td>
                                   <td>
                                     {e.funcID != null
                                       ? funcionarios[Number(e.funcID)]?.name ||
@@ -796,7 +1017,11 @@ export default function Relatorios() {
                                   <td>€ {e.valor_direto.toFixed(2)}</td>
                                   <td>€ {e.valor_teorico.toFixed(2)}</td>
                                   <td className={styles.highlight}>
-                                    € {getEffectiveSnapshotValue(e).toFixed(2)}
+                                    € {getEffectiveSnapshotValue(
+                                      e,
+                                      bucketConfigs.get(resolveEntryBucket(e))?.sourceRatios ||
+                                        defaultSourceRatios,
+                                    ).toFixed(2)}
                                   </td>
                                 </tr>
                               ))}

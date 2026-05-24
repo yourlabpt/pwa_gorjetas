@@ -1,6 +1,8 @@
-# 📚 Documentation Hub - PWA Restaurantes Lisboa
+# 📚 Documentation Hub - PWA Gorjetas
 
-**Quick Navigation for Phase 1 MVP**
+**Quick Navigation organized by document type**
+
+Start with [docs/README.md](README.md) for the categorized document map.
 
 ---
 
@@ -138,7 +140,7 @@
 
 ### "I found a bug - how do I debug?"
 1. Check: [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md#common-issues) (troubleshooting section)
-2. If DB issue: [docker logs pwa_restaurantes_db](docs/QUICK_REFERENCE.md#docker-commands)
+2. If DB issue: [docker logs db](docs/QUICK_REFERENCE.md#quick-commands)
 3. If API issue: Check backend logs in terminal
 4. If UI issue: Browser console (F12)
 
@@ -151,7 +153,7 @@
 ### Backend Implementation
 ```
 backend/src/
-├── tip-calculator/tip-calculator.service.ts      ← Core calculation logic
+├── payout-calculator/payout-calculator.service.ts ← Core calculation logic
 ├── transacoes/transacoes.service.ts              ← Atomic transaction logic
 ├── relatorios/relatorios.service.ts              ← Report generation
 └── [other modules]/                               ← CRUD operations
@@ -161,8 +163,8 @@ backend/src/
 ```
 frontend/src/
 ├── pages/relatorios.tsx                          ← Report UI
-├── pages/transacoes/nova.tsx                     ← Transaction creation
-├── pages/transacoes/index.tsx                    ← Transaction list
+├── pages/configuracao/acerto.tsx                  ← Active config UI
+├── pages/acerto-final.tsx                         ← Final settlement UI
 ├── lib/api.ts                                     ← HTTP client
 └── styles/globals.css                            ← All styling
 ```
@@ -187,7 +189,7 @@ backend/prisma/
 ### API & Backend
 - 🔌 [API Documentation](docs/api-documentation.md)
 - 📐 [Schema](backend/prisma/schema.prisma)
-- 🧮 [Calculation Logic](backend/src/tip-calculator/tip-calculator.service.ts)
+- 🧮 [Calculation Logic](backend/src/payout-calculator/payout-calculator.service.ts)
 
 ### Database
 - 📊 [ER Diagram](docs/er-diagram.md)
@@ -209,7 +211,7 @@ backend/prisma/
 ### Having Issues?
 1. Check [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md#common-issues)
 2. Review [TESTING_GUIDE.md](docs/TESTING_GUIDE.md) for your scenario
-3. Check Docker logs: `docker logs pwa_restaurantes_db`
+3. Check Docker logs: `docker logs db`
 4. Review application logs in terminal
 
 ### Common Issues & Solutions

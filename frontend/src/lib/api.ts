@@ -1,9 +1,12 @@
 import axios, { AxiosInstance } from 'axios';
 
-// Prefer explicit NEXT_PUBLIC_API_URL; otherwise use same-origin in the browser, or localhost in SSR
+const explicitApiUrl = process.env.NEXT_PUBLIC_API_URL;
+
+// Prefer explicit NEXT_PUBLIC_API_URL. Default to same-origin /api in browser,
+// and direct backend access when running on the server.
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== 'undefined' ? '' : 'http://localhost:3001');
+  explicitApiUrl ||
+  (typeof window !== 'undefined' ? '/api' : 'http://127.0.0.1:3001');
 const TOKEN_KEY = 'auth_token';
 
 class ApiClient {
@@ -69,6 +72,12 @@ class ApiClient {
     return this.client.get('/auth/me');
   }
 
+  async logout(sessionId?: number) {
+    const result = await this.client.post('/auth/logout', { sessionId });
+    this.setAuthToken(null);
+    return result;
+  }
+
   // Restaurantes
   async getRestaurantes(ativo?: boolean) {
     const params: any = {};
@@ -97,9 +106,10 @@ class ApiClient {
   }
 
   // Funcionarios
-  async getFuncionarios(restID: number, ativo?: boolean) {
+  async getFuncionarios(restID: number, ativo?: boolean, includeDeleted?: boolean) {
     const params: any = { restID };
     if (ativo !== undefined) params.ativo = ativo;
+    if (includeDeleted !== undefined) params.includeDeleted = includeDeleted;
     return this.client.get('/funcionarios', { params });
   }
 
@@ -119,6 +129,14 @@ class ApiClient {
 
   async updateFuncionario(funcID: number, data: any) {
     return this.client.put(`/funcionarios/${funcID}`, data);
+  }
+
+  async toggleFuncionarioActive(funcID: number) {
+    return this.client.put(`/funcionarios/${funcID}/toggle-active`);
+  }
+
+  async restoreFuncionario(funcID: number) {
+    return this.client.put(`/funcionarios/${funcID}/restore`);
   }
 
   async deleteFuncionario(funcID: number) {
@@ -274,6 +292,18 @@ class ApiClient {
     });
   }
 
+  async listAcertoFinal(restID: number) {
+    return this.client.get('/acerto-final/list', {
+      params: { restID },
+    });
+  }
+
+  async checkAcertoOverlap(restID: number, from: string, to: string) {
+    return this.client.get('/acerto-final/check-overlap', {
+      params: { restID, from, to },
+    });
+  }
+
   // Financeiro Snapshot
   async saveFinanceiroSnapshot(restID: number, data: any) {
     return this.client.post('/faturamento-diario/snapshot', data, {
@@ -348,6 +378,34 @@ class ApiClient {
 
   async getFechoRange(restID: number, from: string, to: string) {
     return this.client.get('/fecho-financeiro/range', { params: { restID, from, to } });
+  }
+
+  // Audit (SUPER_ADMIN-focused)
+  async getAuditTrail(params: {
+    restID?: number;
+    entity?: string;
+    entityId?: string;
+    action?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    return this.client.get('/audit/trail', { params });
+  }
+
+  async getAuditStatistics(restID?: number) {
+    return this.client.get('/audit/statistics', {
+      params: restID ? { restID } : {},
+    });
+  }
+
+  async getActiveSessions() {
+    return this.client.get('/sessions/active');
+  }
+
+  async getMySession() {
+    return this.client.get('/sessions/my-sessions');
   }
 
   // Regras Distribuicao

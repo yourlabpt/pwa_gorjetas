@@ -5,6 +5,8 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { JwtStrategy } from './jwt.strategy';
+import { SessionsModule } from '../sessions/sessions.module';
+import { AuditModule } from '../audit/audit.module';
 
 function getRequiredJwtSecret() {
   const value = process.env.JWT_SECRET;
@@ -25,6 +27,8 @@ const jwtExpiresIn = (process.env.JWT_EXPIRES_IN || '8h') as any;
   imports: [
     PrismaModule,
     PassportModule,
+    SessionsModule,
+    AuditModule,
     JwtModule.register({
       secret: jwtSecret,
       signOptions: {
@@ -36,6 +40,6 @@ const jwtExpiresIn = (process.env.JWT_EXPIRES_IN || '8h') as any;
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
-  exports: [AuthService],
+  exports: [AuthService, SessionsModule],
 })
 export class AuthModule {}

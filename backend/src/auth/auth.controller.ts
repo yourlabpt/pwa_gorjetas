@@ -27,4 +27,10 @@ export class AuthController {
   me(@CurrentUser() user: any) {
     return this.authService.me(user);
   }
+
+  @Post('logout')
+  logout(@CurrentUser() user: any, @Req() req: Request, @Body() body?: { sessionId?: number }) {
+    const requestIp = req.ip || req.socket?.remoteAddress || 'unknown';
+    return this.authService.logout(user.userId, body?.sessionId, requestIp);
+  }
 }

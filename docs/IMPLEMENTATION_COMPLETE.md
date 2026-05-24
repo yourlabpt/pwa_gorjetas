@@ -1,44 +1,6 @@
-# 🎉 Implementação Completa: Sistema Financeiro e Acerto
+# Implementation Complete
 
-**Data:** 23 de janeiro de 2026  
-**Status:** ✅ Implementação Concluída  
-**Compilação:** ✅ Backend + Frontend OK
-
----
-
-## 📋 Resumo do que foi implementado
-
-### 1. **Banco de Dados (Prisma)**
-
-#### Novas Tabelas
-- ✅ **`FATURAMENTO_DIARIO`** - Registra faturamento manual + calculado por dia
-- ✅ **`CONFIGURACAO_ACERTO`** - Define distribuição de gorjetas/faturamento por função
-- ✅ **`ACERTO_PERIODO`** - Registra acerto de período (diário/semanal)
-- ✅ **`ACERTO_FUNCIONARIO`** - Detalhes de distribuição por funcionário
-
-#### Alterações em Tabelas Existentes
-- ✅ **`TRANSACAO`** - Adicionados campos:
-  - `acerto_periodo_id` (FK) - Identifica qual acerto o pagamento pertence
-  - `pago` (BOOLEAN) - Marca se foi acertado/pago
-- ✅ **`RESTAURANTE`** - Novas relações adicionadas
-
-#### Migration
-- ✅ Migration criada: `20260123200216_add_faturamento_acerto_models`
-
----
-
-### 2. **Backend (NestJS)**
-
-#### Módulos Criados
-
-**a) FaturamentoDiarioModule**
-```
-src/faturamento-diario/
-├── faturamento-diario.service.ts    (Lógica de negócio)
-├── faturamento-diario.controller.ts (Endpoints)
-├── faturamento-diario.module.ts
-└── dto/index.ts                     (Data Transfer Objects)
-```
+Archived snapshot. Use [history/README.md](history/README.md) for the archive index and [docs/README.md](README.md) for the current document map.
 
 **Endpoints:**
 - `POST /faturamento-diario` - Criar faturamento

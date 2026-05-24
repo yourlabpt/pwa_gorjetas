@@ -1,6 +1,10 @@
 # pwa_gorjetas
 Aplicação para gestão de faturamento diário e distribuição de gorjetas.
 
+## Documentação
+
+A documentação está organizada por tipo em [docs/README.md](docs/README.md).
+
 ## Deploy em produção (Ubuntu + Docker)
 ### 0) Pré-requisitos
 1. Docker e Docker Compose instalados no servidor.
@@ -96,3 +100,6 @@ sudo docker compose --env-file .env.production -f docker-compose.prod.yml up -d 
   - `SUPER_ADMIN_EMAIL`
   - `SUPER_ADMIN_PASSWORD`
 - Se o usuário já existir, ele é atualizado (nome/email/senha/role).
+
+### 6) Backup automático diário
+Veja a configuração pronta de cron em [docs/BACKUP_CRONJOB.md](docs/BACKUP_CRONJOB.md) para executar backup à meia-noite e manter apenas os últimos 30 dias.

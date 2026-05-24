@@ -17,6 +17,7 @@ interface Funcionario {
   salario?: number | null;
   ativo: boolean;
   restID: number;
+  deletedAt?: string | null;
 }
 
 interface Restaurante {
@@ -24,10 +25,10 @@ interface Restaurante {
   name: string;
 }
 
-const DEFAULT_FUNCOES = ['staff', 'garcom', 'cozinha', 'supervisor', 'chamador'];
+const DEFAULT_FUNCOES: string[] = [];
 
 const defaultFuncao = (options: string[] = DEFAULT_FUNCOES) =>
-  options.length > 0 ? options[0] : 'staff';
+  options.length > 0 ? options[0] : '';
 
 const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'GERENTE'];
 
@@ -40,6 +41,7 @@ export default function Funcionarios() {
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -55,11 +57,7 @@ export default function Funcionarios() {
   const [editingFuncaoName, setEditingFuncaoName] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'funcao'>('name'); // Store name+funcao for finding all instances
-  const displayFuncao = (funcao: string) => {
-    const role = (funcao || '').toLowerCase();
-    if (role === 'garcom' || role === 'staff') return 'Staff';
-    return funcao || '-';
-  };
+  const displayFuncao = (funcao: string) => funcao || '-';
   const formatDate = (value?: string | null) => {
     if (!value) return '-';
     const [year, month, day] = value.split('T')[0].split('-');
@@ -133,7 +131,7 @@ export default function Funcionarios() {
     try {
       setLoading(true);
       setError('');
-      const response = await apiClient.getFuncionarios(restID, true);
+      const response = await apiClient.getFuncionarios(restID);
       setFuncionarios(response.data);
     } catch (err) {
       setError('Erro ao carregar funcionários');
@@ -360,15 +358,33 @@ export default function Funcionarios() {
     setShowForm(true);
   };
 
-  const handleDelete = async (funcID: number) => {
-    if (confirm('Tem certeza que deseja deletar este funcionário?')) {
-      try {
-        await apiClient.deleteFuncionario(funcID);
-        await fetchFuncionarios();
-      } catch (err) {
-        setError('Erro ao deletar funcionário');
-        console.error(err);
-      }
+  const handleToggleActive = async (func: Funcionario) => {
+    try {
+      await apiClient.toggleFuncionarioActive(func.funcID);
+      setSuccess(func.ativo ? 'Funcionário desativado com sucesso.' : 'Funcionário ativado com sucesso.');
+      setTimeout(() => setSuccess(''), 3000);
+      await fetchFuncionarios();
+    } catch (err) {
+      setError('Erro ao atualizar funcionário.');
+      console.error(err);
+    }
+  };
+
+  const handleDelete = async (func: Funcionario) => {
+    const confirmed = window.confirm(
+      `Eliminar ${func.name}? O colaborador deixará de aparecer no frontend, mas o histórico ficará preservado para auditoria e restauro técnico.`,
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await apiClient.deleteFuncionario(func.funcID);
+      setSuccess('Funcionário eliminado com sucesso. Ficará oculto das listas operacionais.');
+      setTimeout(() => setSuccess(''), 3000);
+      await fetchFuncionarios();
+    } catch (err) {
+      setError('Erro ao eliminar funcionário.');
+      console.error(err);
     }
   };
 
@@ -427,6 +443,7 @@ export default function Funcionarios() {
         </div>
 
         {error && <div className={styles.error}>{error}</div>}
+        {success && <div className={styles.info}>{success}</div>}
 
         {restaurantes.length > 1 && (
           <div className={styles.section}>
@@ -489,9 +506,13 @@ export default function Funcionarios() {
                           borderColor: checked ? '#6366f1' : '#e5e7eb',
                           boxShadow: checked ? '0 4px 12px rgba(99,102,241,0.12)' : undefined,
                           cursor: 'pointer',
-                          display: 'flex',
-                          gap: '12px',
-                          alignItems: 'center',
+                          display: 'grid',
+                          gridTemplateColumns: '18px minmax(0, 1fr)',
+                          columnGap: '12px',
+                          alignItems: 'start',
+                          minWidth: 0,
+                          width: '100%',
+                          margin: 0,
                         }}
                       >
                         <input
@@ -510,9 +531,10 @@ export default function Funcionarios() {
                               }));
                             }
                           }}
+                          style={{ margin: 0, marginTop: '2px', alignSelf: 'start' }}
                         />
-                        <div>
-                          <div className={styles.name}>{rest.name}</div>
+                        <div style={{ minWidth: 0, width: '100%' }}>
+                          <div className={styles.name} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rest.name}</div>
                           <div className={styles.metaText}>ID: {rest.restID}</div>
                         </div>
                       </label>
@@ -631,7 +653,7 @@ export default function Funcionarios() {
             <div>
               <h2 style={{ margin: 0 }}>Equipe cadastrada</h2>
               <p className={styles.metaText}>
-                Filtrado pelo restaurante selecionado. Inclui staff, gerentes, supervisores e chamadores.
+                Filtrado pelo restaurante selecionado. Inclui colaboradores ativos e inativos.
               </p>
             </div>
           </div>
@@ -673,6 +695,7 @@ export default function Funcionarios() {
                     <th>Data de Admissão</th>
                     <th>IBAN</th>
                     <th>Salário</th>
+                    <th>Status</th>
                     <th>Pendências</th>
                     <th>Ações</th>
                   </tr>
@@ -681,7 +704,7 @@ export default function Funcionarios() {
                   {filteredFuncionarios.map((func) => {
                     const missingData = getMissingEmployeeData(func);
                     return (
-                      <tr key={func.funcID}>
+                      <tr key={func.funcID} style={{ opacity: func.ativo ? 1 : 0.65 }}>
                         <td className={styles.name}>{func.name}</td>
                         <td>{restaurantes.find(r => r.restID === func.restID)?.name || '-'}</td>
                         <td>{displayFuncao(func.funcao)}</td>
@@ -694,6 +717,17 @@ export default function Funcionarios() {
                           {func.salario != null
                             ? `€ ${Number(func.salario).toFixed(2)}`
                             : '-'}
+                        </td>
+                        <td>
+                          <span
+                            className={styles.chip}
+                            style={{
+                              background: func.ativo ? '#dcfce7' : '#fef2f2',
+                              color: func.ativo ? '#166534' : '#991b1b',
+                            }}
+                          >
+                            {func.ativo ? 'Ativo' : 'Inativo'}
+                          </span>
                         </td>
                         <td>
                           {missingData.length > 0 ? (
@@ -715,10 +749,17 @@ export default function Funcionarios() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDelete(func.funcID)}
+                              onClick={() => handleToggleActive(func)}
+                              className={func.ativo ? styles.btnWarning : styles.btnActivate}
+                            >
+                              {func.ativo ? 'Desativar' : 'Ativar'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(func)}
                               className={styles.btnDanger}
                             >
-                              Deletar
+                              Eliminar
                             </button>
                           </div>
                         </td>

@@ -67,6 +67,8 @@ model User {
 
   // Relations
   restaurantes UserRestaurant[]
+  sessions     UserSession[] @relation("userSessions")
+  auditLogs    AuditLog[] @relation("auditLogs")
 
   @@map("users")
 }
@@ -85,6 +87,22 @@ model UserRestaurant {
   @@unique([userId, restID])
   @@index([restID])
   @@map("user_restaurant")
+}
+
+model UserSession {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  loginTime   DateTime @default(now())
+  lastActivity DateTime @default(now())
+  logoutTime  DateTime?
+  ipAddress   String?  @db.VarChar(45)
+  userAgent   String?  @db.VarChar(500)
+  
+  user        User     @relation("userSessions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([logoutTime]) // For finding active sessions
+  @@map("user_sessions")
 }
 
 // ===== Core Models =====
@@ -123,11 +141,13 @@ model Funcionario {
   name          String
   contacto      String?
   photo         String?
-  funcao        String // garcom, cozinha, supervisor, chamador, etc.
+  funcao        String // staff, cozinha, supervisor, chamador, etc.
   data_admissao DateTime? @db.Date
   iban          String?
   salario       Decimal?  @db.Decimal(12, 2)
   ativo         Boolean   @default(true)
+  deletedAt     DateTime?
+  deleteReason  String?
   restID        Int? // Optional: kept for backward compatibility
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -145,6 +165,7 @@ model Funcionario {
 
   @@index([restID, funcao])
   @@index([restID])
+  @@index([restID, deletedAt])
   @@map("funcionarios")
 }
 
@@ -511,4 +532,115 @@ model AcertoFinalEntry {
   @@index([acerto_final_periodo_id])
   @@index([funcID])
   @@map("acerto_final_entry")
+}
+
+// ===== Audit & Activity Logging =====
+
+enum AuditAction {
+  CREATED
+  UPDATED
+  DELETED
+  LOGIN
+  LOGOUT
+  VIEW
+  COMPUTE
+  SNAPSHOT
+  SETTLE
+  ROLLBACK
+  REPLAY
+  EXPORTED
+  OTHER
+}
+
+enum AuditEntity {
+  User
+  Restaurante
+  Funcionario
+  FuncionarioRestaurante
+  Transacao
+  DistribuicaoGorjetas
+  FaturamentoDiario
+  FaturamentoDiarioDistribuicao
+  ConfiguracaoAcerto
+  AcertoPeriodo
+  AcertoFuncionario
+  AcertoFinalPeriodo
+  AcertoFinalEntry
+  FechoFinanceiro
+  FechoFinanceiroTemplate
+  FechoFinanceiroItem
+  RegraDistribuicao
+  FuncionarioPresencaDiaria
+  OTHER
+}
+
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  requestId   String   @db.VarChar(36) // UUID
+  userId      Int?     // NULL for unauthenticated actions
+  restID      Int? // For multi-tenant filtering
+  action      AuditAction
+  entity      AuditEntity
+  entityId    String   @db.VarChar(255) // JSON array or comma-separated for bulk operations
+  status      String   @db.VarChar(20) // SUCCESS, FAILED, PENDING
+  valuesBefore Json?   // Snapshot of entity before mutation (nullable for CREATE)
+  valuesAfter  Json?   // Snapshot of entity after mutation (nullable for DELETE)
+  errorMessage String? // If status = FAILED
+  ipAddress    String? @db.VarChar(45)
+  userAgent    String? @db.VarChar(500)
+  duration     Int? // Request duration in ms
+  archived     Boolean @default(false)
+  createdAt    DateTime @default(now())
+  archivedAt   DateTime? // When moved to archive table
+
+  user         User? @relation("auditLogs", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([restID, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([entity, entityId])
+  @@index([requestId])
+  @@index([action])
+  @@index([archived])
+  @@map("audit_log")
+}
+
+model AuditArchive {
+  id          Int      @id @default(autoincrement())
+  requestId   String   @db.VarChar(36)
+  userId      Int?
+  restID      Int?
+  action      AuditAction
+  entity      AuditEntity
+  entityId    String   @db.VarChar(255)
+  status      String   @db.VarChar(20)
+  valuesBefore Json?
+  valuesAfter  Json?
+  errorMessage String?
+  ipAddress    String? @db.VarChar(45)
+  userAgent    String? @db.VarChar(500)
+  duration     Int?
+  archivedAt   DateTime @default(now())
+
+  @@index([restID, archivedAt(sort: Desc)])
+  @@index([entity, entityId])
+  @@map("audit_archive")
+}
+
+model AuditBatchLog {
+  id             Int      @id @default(autoincrement())
+  batchId        String   @unique @db.VarChar(36)
+  userId         Int?
+  restID         Int?
+  operationType  String   @db.VarChar(50) // ROLLBACK, REPLAY, BULK_OPERATION
+  operationCount Int      @default(0)
+  status         String   @db.VarChar(20) // SUCCESS, FAILED, PARTIAL
+  details        Json? // Operation metadata, error details
+  rollbackBatchId String? @db.VarChar(36) // Reference to rollback batch if this is a rollback
+  createdAt      DateTime @default(now())
+  completedAt    DateTime?
+
+  @@index([restID])
+  @@index([userId])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_batch_log")
 }

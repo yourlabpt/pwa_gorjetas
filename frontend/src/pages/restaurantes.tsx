@@ -404,10 +404,7 @@ export default function Restaurantes() {
         regra.split_mode ||
         (regra.payment_source === 'ABSOLUTE_EXTERNAL'
           ? 'DIRECT_INPUT_ONLY'
-          : normalizeRole(regra.role_name) === 'staff' ||
-              normalizeRole(regra.role_name).includes('garcom')
-            ? 'PROPORTIONAL_TO_POOL_INPUT'
-            : 'EQUAL_SPLIT'),
+          : 'EQUAL_SPLIT'),
       tipo_de_acerto: regra.tipo_de_acerto || 'DIARIO',
       payment_source: regra.payment_source,
       ordem: String(regra.ordem),

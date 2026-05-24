@@ -4,12 +4,15 @@ import { CreateTransacaoDto } from './dto/transacao.dto';
 import { Decimal } from 'decimal.js';
 import { FinanceEngineService } from '../finance-engine/finance-engine.service';
 import { PaymentSource } from '../payout-calculator/payout-calculator.types';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { AuditAction, AuditEntity } from '@prisma/client';
 
 @Injectable()
 export class TransacoesService {
   constructor(
     private prisma: PrismaService,
     private financeEngine: FinanceEngineService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   async create(data: CreateTransacaoDto) {
@@ -85,6 +88,26 @@ export class TransacoesService {
       return newTransacao;
     });
 
+    // Emit audit event for transaction creation
+    this.eventEmitter.emit('audit.action', {
+      requestId: (global as any).requestId,
+      userId: (global as any).userId,
+      restID: data.restID,
+      action: AuditAction.CREATED,
+      entity: AuditEntity.Transacao,
+      entityId: transacao.tranID.toString(),
+      status: 'SUCCESS',
+      valuesAfter: {
+        tranID: transacao.tranID,
+        total: total.toNumber(),
+        valor_gorjeta_calculada: valorGorjeta.toNumber(),
+        funcID_garcom: data.funcID_garcom,
+        data_transacao: data.data_transacao,
+      },
+      ipAddress: (global as any).ipAddress,
+      userAgent: (global as any).userAgent,
+      duration: (global as any).requestDuration,
+    });
     return this.findOneWithDistributions(transacao.tranID);
   }
 

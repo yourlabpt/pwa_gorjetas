@@ -4,6 +4,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
   OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -11,10 +12,12 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { UserRole } from '@prisma/client';
+import { UserRole, AuditAction, AuditEntity } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { Request } from 'express';
 import { isAdminLike, isSuperAdmin } from './role.util';
+import { AuditService } from '../audit/audit.service';
+import { SessionsService } from '../sessions/sessions.service';
 
 const ROLE_MANAGER = ((UserRole as any).GERENTE ||
   (UserRole as any).GESTOR ||
@@ -53,7 +56,7 @@ export class AuthService implements OnModuleInit {
   private readonly loginAttemptsByEmail = new Map<string, LoginAttemptState>();
   private readonly loginAttemptsByIp = new Map<string, LoginAttemptState>();
 
-  constructor(private prisma: PrismaService, private jwtService: JwtService) {}
+  constructor(private prisma: PrismaService, private jwtService: JwtService, private auditService: AuditService, private sessionsService: SessionsService) {}
 
   async onModuleInit() {
     await this.ensureSuperAdminUser();
@@ -169,9 +172,37 @@ export class AuthService implements OnModuleInit {
     this.clearFailedLogins(normalizedEmail, requestIp);
 
     const token = this.signToken(user);
+    
+    // Create user session
+    const userAgent = req.header('user-agent') || 'unknown';
+    const session = await this.sessionsService.createSession(
+      user.id,
+      requestIp,
+      userAgent,
+    );
+    
+    // Emit LOGIN audit event
+    await this.auditService.logAction({
+      userId: user.id,
+      action: AuditAction.LOGIN,
+      entity: AuditEntity.User,
+      entityId: user.id.toString(),
+      status: 'SUCCESS',
+      ipAddress: requestIp,
+      userAgent,
+      valuesBefore: null,
+      valuesAfter: {
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        sessionId: session.id,
+      },
+    });
+
     return {
       user: this.strip(user),
       accessToken: token,
+      sessionId: session.id,
     };
   }
 
@@ -183,6 +214,34 @@ export class AuthService implements OnModuleInit {
     if (!user) throw new UnauthorizedException();
     return this.strip(user);
   }
+
+  async logout(userId: number, sessionId?: number, ipAddress?: string) {
+    try {
+      // Close the user session
+      await this.sessionsService.closeSession(sessionId, userId);
+
+      // Emit LOGOUT audit event
+      await this.auditService.logAction({
+        userId,
+        action: AuditAction.LOGOUT,
+        entity: AuditEntity.User,
+        entityId: userId.toString(),
+        status: 'SUCCESS',
+        ipAddress,
+        valuesBefore: null,
+        valuesAfter: {
+          sessionId,
+        },
+      });
+
+      return { success: true, message: 'Logged out successfully' };
+    } catch (error) {
+      this.logger.error(`Logout failed for user ${userId}`, error);
+      throw error;
+    }
+  }
+
+  private logger = new Logger(AuthService.name);
 
   private signToken(user: any) {
     const restIds = (user.restaurantes || []).map((r: any) => r.restID);

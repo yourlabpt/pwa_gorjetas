@@ -28,11 +28,13 @@ export class FuncionariosController {
   async findMany(
     @Query('restID', ParseIntPipe) restID: number,
     @Query('ativo') ativo?: string,
+    @Query('includeDeleted') includeDeleted?: string,
     @CurrentUser() user?: any,
   ) {
     assertRestaurantAccess(user, restID);
     const ativoBoolean = ativo === 'true' ? true : ativo === 'false' ? false : undefined;
-    return this.funcionariosService.findMany(restID, ativoBoolean);
+    const includeDeletedBoolean = includeDeleted === 'true';
+    return this.funcionariosService.findMany(restID, ativoBoolean, includeDeletedBoolean);
   }
 
   @Get(':id')
@@ -51,6 +53,20 @@ export class FuncionariosController {
     const func = await this.funcionariosService.findOne(id);
     assertRestaurantAccess(user, func?.restID);
     return this.funcionariosService.update(id, updateFuncionarioDto);
+  }
+
+  @Put(':id/toggle-active')
+  async toggleActive(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    const func = await this.funcionariosService.findOne(id);
+    assertRestaurantAccess(user, func?.restID);
+    return this.funcionariosService.toggleActive(id);
+  }
+
+  @Put(':id/restore')
+  async restore(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    const func = await this.funcionariosService.findOne(id);
+    assertRestaurantAccess(user, func?.restID);
+    return this.funcionariosService.restore(id);
   }
 
   @Delete(':id')

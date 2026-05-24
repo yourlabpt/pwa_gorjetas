@@ -57,10 +57,10 @@ docker-compose up -d
 
 # Check status
 docker ps | grep pwa_restaurantes_db
-# Should output: pwa_restaurantes_db  postgres:16-alpine
+# Should output: pwa_restaurantes_db  postgres:16
 
 # Test connection
-docker exec pwa_restaurantes_db psql -U restaurantes_user -d restaurantes_db -c "SELECT version();"
+docker exec pwa_restaurantes_db psql -U app -d app -c "SELECT version();"
 # Should show PostgreSQL version
 ```
 
@@ -205,11 +205,11 @@ curl -X DELETE http://localhost:3001/funcionarios/5
 # Should no longer show employee 5
 ```
 
-### 4. Configuracao Gorjetas Endpoints
+### 4. Configuracao Acerto Endpoints
 
 #### List Configurations
 ```bash
-curl -X GET "http://localhost:3001/configuracao-gorjetas?restID=1"
+curl -X GET "http://localhost:3001/configuracao-acerto?restID=1"
 
 # Should return:
 # - 3 configurations
@@ -220,7 +220,7 @@ curl -X GET "http://localhost:3001/configuracao-gorjetas?restID=1"
 
 #### Update Configuration
 ```bash
-curl -X PUT http://localhost:3001/configuracao-gorjetas/1 \
+curl -X PUT http://localhost:3001/configuracao-acerto/1 \
   -H "Content-Type: application/json" \
   -d '{
     "percentagem": 8.0
@@ -442,7 +442,7 @@ Click "Funcionários" or visit http://localhost:3000/funcionarios
 
 ### 4. Configuracao Page
 
-Visit http://localhost:3000/configuracao-gorjetas
+Visit http://localhost:3000/configuracao/acerto
 
 **Verify:**
 - [ ] Table shows 3 configurations
@@ -458,14 +458,14 @@ Visit http://localhost:3000/configuracao-gorjetas
 - [ ] Table updates to 7.5%
 - [ ] Click "Editar" again to verify
 
-### 5. Nova Transação Page
+### 5. Acerto Final Page
 
-Visit http://localhost:3000/transacoes/nova
+Visit http://localhost:3000/acerto-final
 
 **Verify:**
-- [ ] Form shows 4 fields
-- [ ] Garcom dropdown populated with 2 employees
-- [ ] Form layout is 2-column
+- [ ] Page loads without errors
+- [ ] Restaurant and date filters render
+- [ ] Summary table and breakdown sections render
 
 **Test Create Transaction:**
 - [ ] Fill: nome="Mesa 10", total=150.00
@@ -558,7 +558,7 @@ Visit http://localhost:3000/relatorios
    - Verify in GET /funcionarios
 
 3. **Configure Tip**
-   - Ensure configs exist via GET /configuracao-gorjetas
+  - Ensure configs exist via GET /configuracao-acerto
 
 4. **Create Transaction**
    - UI: Nova Transação → Fill form → Create

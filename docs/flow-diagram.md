@@ -14,7 +14,7 @@ graph TD
     
     C --> C1["POST /funcionarios<br/>GET /funcionarios<br/>PUT /funcionarios/:id<br/>DELETE /funcionarios/:id"]
     
-    D --> D1["GET /configuracao-gorjetas<br/>PUT /configuracao-gorjetas/:id"]
+    D --> D1["GET /configuracao-acerto<br/>PUT /configuracao-acerto/:id"]
     
     E --> E1["Fill Form:<br/>- Mesa/Conta<br/>- Total<br/>- Garçom<br/>- MB WAY"]
     E1 --> E2["POST /transacoes"]
@@ -97,7 +97,7 @@ graph LR
     A["Frontend<br/>React/Next.js"] -->|HTTP/JSON| B["NestJS API<br/>Port 3001"]
     B -->|Prisma ORM| C["PostgreSQL<br/>Port 5432"]
     
-    A --> A1["Pages:<br/>- funcionarios<br/>- configuracao-gorjetas<br/>- transacoes/nova<br/>- transacoes<br/>- relatorios"]
+    A --> A1["Pages:<br/>- funcionarios<br/>- configuracao/acerto<br/>- acerto-final<br/>- financeiro-diario<br/>- relatorios"]
     
     B --> B1["Modules:<br/>- FuncionariosController<br/>- ConfiguracaoController<br/>- TransacoesController<br/>- DistribuicaoController<br/>- RelatoriosController"]
     

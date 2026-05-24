@@ -1,0 +1,54 @@
+services:
+  db_test:
+    image: postgres:16
+    container_name: pwa_restaurantes_test_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app_test
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - localtest
+
+  app_test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "/api"
+    container_name: pwa_restaurantes_test_app
+    restart: unless-stopped
+    depends_on:
+      db_test:
+        condition: service_healthy
+    env_file:
+      - .env.localtest
+    environment:
+      DATABASE_URL: postgres://app:app@db_test:5432/app_test
+      NEXT_PUBLIC_API_URL: /api
+      BACKEND_INTERNAL_URL: http://127.0.0.1:3001
+      PORT: 3001
+      FRONTEND_PORT: 3000
+      MIGRATE_ON_START: "true"
+      MIGRATE_STRICT: "true"
+    ports:
+      - "0.0.0.0:3300:3000"
+      - "127.0.0.1:3301:3001"
+    networks:
+      - localtest
+
+networks:
+  localtest:
+    driver: bridge
+
+volumes:
+  postgres_test_data:

@@ -290,6 +290,21 @@
   width: 120px;
 }
 
+.rowAcertoField {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.rowDistributeBtn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
 .highlight {
   font-weight: 700;
   color: #0f172a;
@@ -781,6 +796,12 @@
   white-space: nowrap;
 }
 
+@media (max-width: 768px) {
+  .stickyBar {
+    top: calc(64px + env(safe-area-inset-top, 0px));
+  }
+}
+
 @media (max-width: 640px) {
   .stickyBar {
     flex-wrap: wrap;
@@ -795,4 +816,40 @@
   .stickyBarLabel {
     font-size: 10px;
   }
+
+  .rowAcertoField {
+    min-width: 200px;
+  }
+
+  .rowDistributeBtn {
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+}
+
+.unsavedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #b45309;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 999px;
+  padding: 3px 10px;
+  animation: unsavedPulse 2s ease-in-out infinite;
+}
+
+.unsavedDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f59e0b;
+  flex-shrink: 0;
+}
+
+@keyframes unsavedPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
