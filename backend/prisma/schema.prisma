@@ -323,18 +323,20 @@ model ConfiguracaoAcerto {
 }
 
 model FaturamentoDiarioDistribuicao {
-  id            Int      @id @default(autoincrement())
-  restID        Int
-  data          DateTime @db.Date
-  funcID        Int?
-  role          String
-  valor_pool    Decimal? @db.Decimal(12, 2)
-  valor_direto  Decimal? @db.Decimal(12, 2)
-  valor_teorico Decimal? @db.Decimal(12, 2)
-  valor_pago    Decimal  @db.Decimal(12, 2)
-  desconto      Decimal? @db.Decimal(12, 2)
-  criadoEm      DateTime @default(now())
-  atualizadoEm  DateTime @updatedAt
+  id             Int      @id @default(autoincrement())
+  restID         Int
+  data           DateTime @db.Date
+  funcID         Int?
+  role           String
+  employee_name  String?
+  employee_funcao String?
+  valor_pool     Decimal? @db.Decimal(12, 2)
+  valor_direto   Decimal? @db.Decimal(12, 2)
+  valor_teorico  Decimal? @db.Decimal(12, 2)
+  valor_pago     Decimal  @db.Decimal(12, 2)
+  desconto       Decimal? @db.Decimal(12, 2)
+  criadoEm       DateTime @default(now())
+  atualizadoEm   DateTime @updatedAt
 
   restaurante Restaurante  @relation(fields: [restID], references: [restID], onDelete: Cascade)
   funcionario Funcionario? @relation(fields: [funcID], references: [funcID])
@@ -518,6 +520,8 @@ model AcertoFinalEntry {
   acerto_final_periodo_id Int
   funcID                  Int
   bucket                  String
+  employee_name           String?
+  employee_funcao         String?
   valor_sugerido          Decimal  @db.Decimal(12, 2)
   valor_manual            Decimal  @db.Decimal(12, 2)
   is_manual_override      Boolean  @default(false)

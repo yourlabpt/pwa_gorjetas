@@ -323,6 +323,12 @@ class ApiClient {
     });
   }
 
+  async getFinanceiroSnapshotRecomputed(restID: number, data: string) {
+    return this.client.get('/faturamento-diario/snapshot/recomputed', {
+      params: { restID, data },
+    });
+  }
+
   /**
    * Server-side daily payout computation using RegraDistribuicao rules.
    * Does NOT save anything — returns the calculated breakdown.

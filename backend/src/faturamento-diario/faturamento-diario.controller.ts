@@ -8,6 +8,7 @@ import {
   Body,
   Query,
   ParseIntPipe,
+  Req,
 } from '@nestjs/common';
 import { FaturamentoDiarioService } from './faturamento-diario.service';
 import {
@@ -101,9 +102,15 @@ export class FaturamentoDiarioController {
     @Query('restID', ParseIntPipe) restID: number,
     @Body() dto: SaveFinanceiroSnapshotDto,
     @CurrentUser() user: any,
+    @Req() req: any,
   ) {
     assertRestaurantAccess(user, restID);
-    await this.faturamentoDiarioService.saveSnapshot(restID, dto);
+    await this.faturamentoDiarioService.saveSnapshot(restID, dto, {
+      userId: user.userId,
+      requestId: req.requestId,
+      ipAddress: req.ipAddress,
+      userAgent: req.userAgent,
+    });
     return { message: 'Snapshot salvo com sucesso' };
   }
 
@@ -126,6 +133,21 @@ export class FaturamentoDiarioController {
   ) {
     assertRestaurantAccess(user, restID);
     return this.faturamentoDiarioService.getSnapshotRange(restID, new Date(from), new Date(to || from));
+  }
+
+  /**
+   * GET /faturamento-diario/snapshot/recomputed?restID=N&data=YYYY-MM-DD
+   * Re-runs today's computation with the current rules and employees.
+   * Only called by an explicit "Recalculate" user action.
+   */
+  @Get('snapshot/recomputed')
+  async getRecomputedSnapshot(
+    @Query('restID', ParseIntPipe) restID: number,
+    @Query('data') data: string,
+    @CurrentUser() user: any,
+  ) {
+    assertRestaurantAccess(user, restID);
+    return this.faturamentoDiarioService.getRecomputedSnapshot(restID, new Date(data));
   }
 
   @Delete(':id')

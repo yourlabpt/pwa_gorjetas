@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateFaturamentoDiarioDto,
@@ -626,6 +626,7 @@ export class FaturamentoDiarioService {
   async saveSnapshot(
     restID: number,
     dto: SaveFinanceiroSnapshotDto,
+    context?: { userId?: number; requestId?: string; ipAddress?: string; userAgent?: string },
   ): Promise<void> {
     const dataFormatada = this.normalizeDate(dto.data);
     const computation = await this.financeEngine.computeDailyPayouts(
@@ -659,6 +660,14 @@ export class FaturamentoDiarioService {
       const existing = await tx.faturamentoDiario.findUnique({
         where: { restID_data: { restID, data: dataFormatada } },
       });
+
+      // Optimistic concurrency check: reject if another session saved since the client loaded
+      if (dto.expectedUpdatedAt && existing &&
+          existing.atualizadoEm.toISOString() !== dto.expectedUpdatedAt) {
+        throw new ConflictException(
+          'Este registo foi modificado por outra sessão. Recarregue a página e tente novamente.',
+        );
+      }
 
       const buckets = {
         ...(dto.faturamento_com_gorjeta != null && { faturamento_com_gorjeta: new Prisma.Decimal(dto.faturamento_com_gorjeta) }),
@@ -717,15 +726,18 @@ export class FaturamentoDiarioService {
         staffFuncIDs.length > 0
           ? await tx.funcionario.findMany({
               where: {
-                restID,
                 funcID: { in: staffFuncIDs },
               },
               select: {
                 funcID: true,
+                name: true,
                 funcao: true,
               },
             })
           : [];
+      const employeeMetaByFuncID = new Map(
+        employeeMetaRows.map((row) => [row.funcID, { name: row.name, funcao: row.funcao }]),
+      );
       const employeeRoleByFuncID = new Map(
         employeeMetaRows.map((row) => [row.funcID, row.funcao]),
       );
@@ -814,11 +826,14 @@ export class FaturamentoDiarioService {
       });
 
       aggregate.forEach((entry) => {
+        const meta = entry.funcID != null ? employeeMetaByFuncID.get(entry.funcID) : undefined;
         rows.push({
           restID,
           data: dataFormatada,
           funcID: entry.funcID,
           role: entry.role,
+          employee_name: meta?.name ?? null,
+          employee_funcao: meta?.funcao ?? null,
           valor_pool:
             entry.valor_pool == null
               ? null
@@ -866,8 +881,8 @@ export class FaturamentoDiarioService {
 
     // Emit audit event for snapshot save
     this.eventEmitter.emit('audit.action', {
-      requestId: (global as any).requestId,
-      userId: (global as any).userId,
+      requestId: context?.requestId,
+      userId: context?.userId,
       restID,
       action: AuditAction.SNAPSHOT,
       entity: AuditEntity.FaturamentoDiario,
@@ -879,32 +894,96 @@ export class FaturamentoDiarioService {
         valor_total_gorjetas: dto.valor_total_gorjetas,
         staff_count: (dto.staff || []).length,
       },
-      ipAddress: (global as any).ipAddress,
-      userAgent: (global as any).userAgent,
-      duration: (global as any).requestDuration,
+      ipAddress: context?.ipAddress,
+      userAgent: context?.userAgent,
     });
   }
 
   async getSnapshot(restID: number, data: Date) {
     const dataFormatada = this.normalizeDate(data);
 
-    const faturamento = await this.prisma.faturamentoDiario.findUnique({
-      where: { restID_data: { restID, data: dataFormatada } },
+    const [faturamento, distrib, presencas] = await Promise.all([
+      this.prisma.faturamentoDiario.findUnique({
+        where: { restID_data: { restID, data: dataFormatada } },
+      }),
+      this.prisma.faturamentoDiarioDistribuicao.findMany({
+        where: { restID, data: dataFormatada },
+      }),
+      this.prisma.$queryRaw<Array<{ funcID: number; presente: boolean }>>`
+        SELECT "funcID", "presente"
+        FROM "funcionario_presenca_diaria"
+        WHERE "restID" = ${restID}
+          AND "data" = ${dataFormatada}
+      `,
+    ]);
+
+    // Resolve employee names: prefer stored name (Phase 2 durable), fall back to live lookup
+    // for rows that pre-date the migration — includes soft-deleted employees in live lookup
+    const missingNameFuncIDs = distrib
+      .filter((row) => row.funcID != null && !row.employee_name)
+      .map((row) => row.funcID as number);
+    const employeeNameMap = new Map<number, { name: string; funcao: string }>();
+    if (missingNameFuncIDs.length > 0) {
+      const employees = await this.prisma.funcionario.findMany({
+        where: { funcID: { in: missingNameFuncIDs } },
+        select: { funcID: true, name: true, funcao: true },
+      });
+      employees.forEach((e) => employeeNameMap.set(e.funcID, { name: e.name, funcao: e.funcao }));
+    }
+
+    const entries = distrib.map((row) => {
+      const meta = row.funcID != null ? employeeNameMap.get(row.funcID) : undefined;
+      return {
+        funcID: row.funcID,
+        role: row.role,
+        employee_name: row.employee_name ?? meta?.name ?? null,
+        employee_funcao: row.employee_funcao ?? meta?.funcao ?? null,
+        valor_pool: row.valor_pool?.toNumber() ?? 0,
+        valor_direto: row.valor_direto?.toNumber() ?? 0,
+        valor_teorico: row.valor_teorico?.toNumber() ?? 0,
+        valor_pago: row.valor_pago?.toNumber() ?? 0,
+        desconto: row.desconto?.toNumber() ?? 0,
+        valor_nao_pago: Math.max(
+          (row.valor_teorico?.toNumber() ?? 0) - (row.valor_pago?.toNumber() ?? 0),
+          0,
+        ),
+      };
     });
 
-    const distrib = await this.prisma.faturamentoDiarioDistribuicao.findMany({
-      where: { restID, data: dataFormatada },
-    });
-    const presencas = await this.prisma.$queryRaw<
-      Array<{ funcID: number; presente: boolean }>
-    >`
-      SELECT "funcID", "presente"
-      FROM "funcionario_presenca_diaria"
-      WHERE "restID" = ${restID}
-        AND "data" = ${dataFormatada}
-    `;
+    return {
+      atualizadoEm: faturamento?.atualizadoEm?.toISOString() ?? null,
+      faturamento_inserido: faturamento?.faturamento_inserido?.toNumber() ?? null,
+      faturamento_com_gorjeta: faturamento?.faturamento_com_gorjeta?.toNumber() ?? null,
+      faturamento_sem_gorjeta: faturamento?.faturamento_sem_gorjeta?.toNumber() ?? null,
+      valor_total_gorjetas: faturamento?.valor_total_gorjetas?.toNumber() ?? null,
+      presencas,
+      entries,
+    };
+  }
 
-    const recomputedEntries = await this.buildRecomputedEntriesForDay(
+  /**
+   * Returns stored snapshot data re-computed with current rules and employees.
+   * Use only for explicit "Recalculate" action — never called on normal read.
+   */
+  async getRecomputedSnapshot(restID: number, data: Date) {
+    const dataFormatada = this.normalizeDate(data);
+
+    const [faturamento, distrib, presencas] = await Promise.all([
+      this.prisma.faturamentoDiario.findUnique({
+        where: { restID_data: { restID, data: dataFormatada } },
+      }),
+      this.prisma.faturamentoDiarioDistribuicao.findMany({
+        where: { restID, data: dataFormatada },
+      }),
+      this.prisma.$queryRaw<Array<{ funcID: number; presente: boolean }>>`
+        SELECT "funcID", "presente"
+        FROM "funcionario_presenca_diaria"
+        WHERE "restID" = ${restID}
+          AND "data" = ${dataFormatada}
+      `,
+    ]);
+
+    const entries = await this.buildRecomputedEntriesForDay(
       restID,
       dataFormatada,
       faturamento,
@@ -917,7 +996,7 @@ export class FaturamentoDiarioService {
       faturamento_sem_gorjeta: faturamento?.faturamento_sem_gorjeta?.toNumber() ?? null,
       valor_total_gorjetas: faturamento?.valor_total_gorjetas?.toNumber() ?? null,
       presencas,
-      entries: recomputedEntries,
+      entries,
     };
   }
 
@@ -973,26 +1052,58 @@ export class FaturamentoDiarioService {
       return acc;
     }, {});
 
-    const result = await Promise.all(faturamentos.map(async (f) => {
-      const key = f.data.toISOString().split('T')[0];
-      const storedEntries = distribByDate[key] || [];
-      const dayPresencas = presencasByDate[key] || [];
-      const recomputedEntries = await this.buildRecomputedEntriesForDay(
-        restID,
-        f.data,
-        f,
-        storedEntries,
+    // Resolve employee names for rows missing stored name — includes soft-deleted employees
+    const allFuncIDs = Array.from(
+      new Set(
+        distrib
+          .filter((row: any) => row.funcID != null && !row.employee_name)
+          .map((row: any) => row.funcID as number),
+      ),
+    );
+    const rangeEmployeeNameMap = new Map<number, { name: string; funcao: string }>();
+    if (allFuncIDs.length > 0) {
+      const employees = await this.prisma.funcionario.findMany({
+        where: { funcID: { in: allFuncIDs } },
+        select: { funcID: true, name: true, funcao: true },
+      });
+      employees.forEach((e) =>
+        rangeEmployeeNameMap.set(e.funcID, { name: e.name, funcao: e.funcao }),
       );
+    }
+
+    const result = faturamentos.map((f) => {
+      const key = f.data.toISOString().split('T')[0];
+      const storedRows: any[] = distribByDate[key] || [];
+      const dayPresencas = presencasByDate[key] || [];
+      const entries = storedRows.map((row) => {
+        const meta = row.funcID != null ? rangeEmployeeNameMap.get(row.funcID) : undefined;
+        return {
+          funcID: row.funcID,
+          role: row.role,
+          employee_name: row.employee_name ?? meta?.name ?? null,
+          employee_funcao: row.employee_funcao ?? meta?.funcao ?? null,
+          valor_pool: row.valor_pool?.toNumber() ?? 0,
+          valor_direto: row.valor_direto?.toNumber() ?? 0,
+          valor_teorico: row.valor_teorico?.toNumber() ?? 0,
+          valor_pago: row.valor_pago?.toNumber() ?? 0,
+          desconto: row.desconto?.toNumber() ?? 0,
+          valor_nao_pago: Math.max(
+            (row.valor_teorico?.toNumber() ?? 0) - (row.valor_pago?.toNumber() ?? 0),
+            0,
+          ),
+        };
+      });
       return {
         data: key,
+        atualizadoEm: f.atualizadoEm?.toISOString() ?? null,
         faturamento_inserido: f.faturamento_inserido.toNumber(),
         faturamento_com_gorjeta: f.faturamento_com_gorjeta?.toNumber() ?? null,
         faturamento_sem_gorjeta: f.faturamento_sem_gorjeta?.toNumber() ?? null,
         valor_total_gorjetas: f.valor_total_gorjetas?.toNumber() ?? null,
         presencas: dayPresencas,
-        entries: recomputedEntries,
+        entries,
       };
-    }));
+    });
 
     return result;
   }

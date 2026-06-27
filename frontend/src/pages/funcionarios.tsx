@@ -57,6 +57,8 @@ export default function Funcionarios() {
   const [editingFuncaoName, setEditingFuncaoName] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'funcao'>('name'); // Store name+funcao for finding all instances
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [deletedFuncionarios, setDeletedFuncionarios] = useState<Funcionario[]>([]);
   const displayFuncao = (funcao: string) => funcao || '-';
   const formatDate = (value?: string | null) => {
     if (!value) return '-';
@@ -133,6 +135,11 @@ export default function Funcionarios() {
       setError('');
       const response = await apiClient.getFuncionarios(restID);
       setFuncionarios(response.data);
+      // Also refresh deleted list if panel is open
+      if (showDeleted) {
+        const deletedRes = await apiClient.getFuncionarios(restID, undefined, true);
+        setDeletedFuncionarios((deletedRes.data as Funcionario[]).filter((f) => !!f.deletedAt));
+      }
     } catch (err) {
       setError('Erro ao carregar funcionários');
       console.error(err);
@@ -384,6 +391,27 @@ export default function Funcionarios() {
       await fetchFuncionarios();
     } catch (err) {
       setError('Erro ao eliminar funcionário.');
+      console.error(err);
+    }
+  };
+
+  const handleRestore = async (func: Funcionario) => {
+    const confirmed = window.confirm(
+      `Restaurar ${func.name}? O colaborador voltará a aparecer como inativo e poderá ser reativado.`,
+    );
+    if (!confirmed) return;
+    try {
+      await apiClient.restoreFuncionario(func.funcID);
+      setSuccess(`${func.name} restaurado com sucesso. Aparece agora como Inativo.`);
+      setTimeout(() => setSuccess(''), 4000);
+      await fetchFuncionarios();
+      // Refresh deleted list
+      if (restID) {
+        const deletedRes = await apiClient.getFuncionarios(restID, undefined, true);
+        setDeletedFuncionarios((deletedRes.data as Funcionario[]).filter((f) => !!f.deletedAt));
+      }
+    } catch (err) {
+      setError('Erro ao restaurar funcionário.');
       console.error(err);
     }
   };
@@ -675,6 +703,25 @@ export default function Funcionarios() {
                 <option value="funcao">Função</option>
               </select>
             </div>
+            <div className={styles.selectGroup}>
+              <label>&nbsp;</label>
+              <button
+                type="button"
+                className={showDeleted ? styles.btnWarning : styles.btnSecondary}
+                onClick={async () => {
+                  const next = !showDeleted;
+                  setShowDeleted(next);
+                  if (next && restID) {
+                    try {
+                      const res = await apiClient.getFuncionarios(restID, undefined, true);
+                      setDeletedFuncionarios((res.data as Funcionario[]).filter((f) => !!f.deletedAt));
+                    } catch {}
+                  }
+                }}
+              >
+                {showDeleted ? 'Ocultar eliminados' : 'Mostrar eliminados'}
+              </button>
+            </div>
           </div>
 
           {loading ? (
@@ -768,6 +815,53 @@ export default function Funcionarios() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {showDeleted && (
+            <div style={{ marginTop: 24 }}>
+              <h3 style={{ marginBottom: 8, color: '#991b1b' }}>
+                Eliminados ({deletedFuncionarios.length})
+              </h3>
+              <p className={styles.metaText} style={{ marginBottom: 12 }}>
+                Colaboradores eliminados — histórico preservado. Restaure para repor como inativo.
+              </p>
+              {deletedFuncionarios.length === 0 ? (
+                <p className={styles.muted}>Nenhum colaborador eliminado neste restaurante.</p>
+              ) : (
+                <div className={styles.tableWrapper}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Nome</th>
+                        <th>Função</th>
+                        <th>Eliminado em</th>
+                        <th>Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deletedFuncionarios.map((func) => (
+                        <tr key={func.funcID} style={{ opacity: 0.6, textDecoration: 'line-through' }}>
+                          <td className={styles.name}>{func.name}</td>
+                          <td>{displayFuncao(func.funcao)}</td>
+                          <td style={{ textDecoration: 'none' }}>
+                            {func.deletedAt ? new Date(func.deletedAt).toLocaleDateString('pt-PT') : '-'}
+                          </td>
+                          <td style={{ textDecoration: 'none' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleRestore(func)}
+                              className={styles.btnActivate}
+                            >
+                              Restaurar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>

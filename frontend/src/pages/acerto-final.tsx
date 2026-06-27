@@ -534,7 +534,7 @@ export default function AcertoFinalPage() {
         if (!existing) {
           employeeMap.set(funcID, {
             funcID,
-            name: entry.employee_name || `Func ${funcID}`,
+            name: entry.employee_name || `Desconhecido (ID: ${funcID})`,
             funcao: entry.employee_funcao || entry.role || '—',
             bucket: fallbackBucket,
             diasTrabalhados: 0,
@@ -558,7 +558,7 @@ export default function AcertoFinalPage() {
             computeSnapshotEntryEffectiveValue(entry, current.sourceRatios),
         );
 
-        if (!current.name || current.name.startsWith('Func ')) {
+        if (!current.name || current.name.startsWith('Func ') || current.name.startsWith('Desconhecido')) {
           current.name = entry.employee_name || current.name;
         }
       });

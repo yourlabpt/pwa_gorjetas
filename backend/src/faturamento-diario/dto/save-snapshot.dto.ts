@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsOptional,
   IsIn,
+  IsString,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -104,4 +105,12 @@ export class SaveFinanceiroSnapshotDto {
   @IsOptional()
   @IsIn(['SKIP', 'PARTIAL'])
   insufficientFundsPolicy?: 'SKIP' | 'PARTIAL';
+
+  /**
+   * Optimistic concurrency token — ISO datetime of the snapshot's last save.
+   * If provided and the record has been updated since, the save is rejected with 409 Conflict.
+   */
+  @IsOptional()
+  @IsString()
+  expectedUpdatedAt?: string;
 }

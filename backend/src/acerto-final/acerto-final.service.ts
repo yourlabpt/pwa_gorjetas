@@ -81,16 +81,29 @@ export class AcertoFinalService {
       }
 
       if (dto.entries.length > 0) {
+        // Fetch employee names (includes soft-deleted) so they are stored with the acerto
+        const entryFuncIDs = dto.entries.map((e) => e.funcID);
+        const employeeRows = await tx.funcionario.findMany({
+          where: { funcID: { in: entryFuncIDs } },
+          select: { funcID: true, name: true, funcao: true },
+        });
+        const empMap = new Map(employeeRows.map((e) => [e.funcID, e]));
+
         await tx.acertoFinalEntry.createMany({
-          data: dto.entries.map((entry) => ({
-            acerto_final_periodo_id: periodoId,
-            funcID: entry.funcID,
-            bucket: entry.bucket,
-            valor_sugerido: new Prisma.Decimal(entry.valor_sugerido),
-            valor_manual: new Prisma.Decimal(entry.valor_manual),
-            is_manual_override: entry.is_manual_override,
-            notas: entry.notas || null,
-          })),
+          data: dto.entries.map((entry) => {
+            const emp = empMap.get(entry.funcID);
+            return {
+              acerto_final_periodo_id: periodoId,
+              funcID: entry.funcID,
+              bucket: entry.bucket,
+              employee_name: emp?.name ?? null,
+              employee_funcao: emp?.funcao ?? null,
+              valor_sugerido: new Prisma.Decimal(entry.valor_sugerido),
+              valor_manual: new Prisma.Decimal(entry.valor_manual),
+              is_manual_override: entry.is_manual_override,
+              notas: entry.notas || null,
+            };
+          }),
         });
       }
 
@@ -204,6 +217,8 @@ export class AcertoFinalService {
         id: e.id,
         funcID: e.funcID,
         bucket: e.bucket,
+        employee_name: e.employee_name ?? null,
+        employee_funcao: e.employee_funcao ?? null,
         valor_sugerido: e.valor_sugerido?.toNumber?.() ?? Number(e.valor_sugerido),
         valor_manual: e.valor_manual?.toNumber?.() ?? Number(e.valor_manual),
         is_manual_override: e.is_manual_override,

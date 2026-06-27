@@ -240,12 +240,15 @@ export default function FinanceiroDiario() {
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [snapshotMessage, setSnapshotMessage] = useState('');
   const [snapshotLoaded, setSnapshotLoaded] = useState(false);
+  const [recomputeLoading, setRecomputeLoading] = useState(false);
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [gorjetaInputs, setGorjetaInputs] = useState<Record<number, GorjetaEntry>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const formDirtyRef = useRef(false);
   const suppressNextAutoPersistRef = useRef(false);
+  const loadCounterRef = useRef(0);
+  const snapshotUpdatedAtRef = useRef<string | null>(null);
   const [formDirty, setFormDirty] = useState(false);
 
   // ── Fecho Financeiro state ──────────────────────────────────────────────
@@ -301,6 +304,7 @@ export default function FinanceiroDiario() {
       formDirtyRef.current = false;
       setFormDirty(false);
       setSnapshotLoaded(false);
+      snapshotUpdatedAtRef.current = null;
       suppressNextAutoPersistRef.current = true;
       setRestaurantId(nextRestaurantId);
     },
@@ -313,6 +317,7 @@ export default function FinanceiroDiario() {
       formDirtyRef.current = false;
       setFormDirty(false);
       setSnapshotLoaded(false);
+      snapshotUpdatedAtRef.current = null;
       suppressNextAutoPersistRef.current = true;
       setSelectedDate(nextDate);
     },
@@ -706,12 +711,21 @@ export default function FinanceiroDiario() {
         setComputeError('');
       } catch (err: any) {
         if (cancelled) return;
+        const status = err?.response?.status;
         const msg = err?.response?.data?.message;
-        setComputeError(
-          Array.isArray(msg)
+        let errorMessage: string;
+        if (status === 401) {
+          errorMessage = 'Sessão expirada. Por favor, faça login novamente.';
+        } else if (status === 403) {
+          errorMessage = 'Sem permissão para este restaurante.';
+        } else if (status != null && status >= 500) {
+          errorMessage = 'Erro interno do servidor. Aguarde e tente novamente.';
+        } else {
+          errorMessage = Array.isArray(msg)
             ? msg.join(', ')
-            : msg || 'Não foi possível calcular a distribuição no backend.',
-        );
+            : msg || 'Não foi possível calcular a distribuição no backend.';
+        }
+        setComputeError(errorMessage);
         setBackendComputation(null);
       } finally {
         if (!cancelled) setComputeLoading(false);
@@ -1572,18 +1586,27 @@ export default function FinanceiroDiario() {
         insufficientFundsPolicy: 'PARTIAL' as const,
         staff: staffEntries,
         presencas,
+        ...(snapshotUpdatedAtRef.current !== null ? { expectedUpdatedAt: snapshotUpdatedAtRef.current } : {}),
       };
 
-      await apiClient.saveFinanceiroSnapshot(restaurantId, payload);
+      const saveRes = await apiClient.saveFinanceiroSnapshot(restaurantId, payload);
+      // Capture the new version token so the next save uses optimistic lock
+      snapshotUpdatedAtRef.current = (saveRes.data as any)?.atualizadoEm ?? null;
       // Clear sessionStorage after successful save so next load fetches fresh data
       formDirtyRef.current = false;
       setFormDirty(false);
       try { sessionStorage.removeItem(buildFormSessionKey(restaurantId, selectedDate)); } catch {}
       setSnapshotMessage('Snapshot salvo com sucesso.');
       setTimeout(() => setSnapshotMessage(''), 3000);
-    } catch (err) {
-      setSnapshotMessage('Erro ao salvar snapshot.');
-      setTimeout(() => setSnapshotMessage(''), 3000);
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        setSnapshotMessage(
+          'Este registo foi modificado por outra sessão. Recarregue a página antes de salvar.',
+        );
+      } else {
+        setSnapshotMessage('Erro ao salvar snapshot.');
+      }
+      setTimeout(() => setSnapshotMessage(''), 5000);
     } finally {
       setSnapshotLoading(false);
     }
@@ -1591,6 +1614,7 @@ export default function FinanceiroDiario() {
 
   const loadSnapshot = async () => {
     if (!restaurantId || !selectedDate || funcionarios.length === 0) return;
+    const myLoad = ++loadCounterRef.current;
 
     // Check sessionStorage for unsaved edits before hitting backend
     const formKey = buildFormSessionKey(restaurantId, selectedDate);
@@ -1658,17 +1682,15 @@ export default function FinanceiroDiario() {
 
       const gorjetaState: Record<number, GorjetaEntry> = { ...defaultStaffState };
       const funcionarioById = new Map(funcionarios.map((f) => [f.funcID, f]));
-      const unresolvedEntries: Array<{
-        roleBucket: string;
-        poolValue: number;
-        directValue: number;
-      }> = [];
 
       (data.entries || []).forEach((e: any) => {
-        const roleBucket = toRoleBucket(e.role || '');
-        const entryFunc =
-          e.funcID != null ? funcionarioById.get(Number(e.funcID)) : undefined;
+        // Skip role-level entries (no funcID) — stored aggregates, not per-employee inputs
+        if (e.funcID == null) return;
+        if (gorjetaState[e.funcID] === undefined) return;
+
+        const entryFunc = funcionarioById.get(Number(e.funcID));
         const employeeBucket = entryFunc ? toRoleBucket(entryFunc.funcao || '') : '';
+        const roleBucket = toRoleBucket(e.role || '');
         const effectiveBucket = employeeBucket || roleBucket;
         const poolValue = Number(e.valor_pool || 0);
         const directValue = Number(e.valor_direto || 0);
@@ -1686,54 +1708,15 @@ export default function FinanceiroDiario() {
             : 0;
         const resolvedPool = poolValue > 0 ? poolValue : legacyStaffPoolValue;
         const resolvedDirect = directValue > 0 ? directValue : legacyAbsoluteValue;
-
         const descontoValue = Number(e.desconto || 0);
 
-        if (e.funcID != null && gorjetaState[e.funcID] !== undefined) {
-          const existing = gorjetaState[e.funcID];
-          gorjetaState[e.funcID] = {
-            valor: resolvedPool > 0 ? resolvedPool.toString() : '',
-            direta: resolvedDirect > 0 ? resolvedDirect.toString() : '',
-            presente: existing?.presente || false,
-            desconto: descontoValue > 0 ? descontoValue.toString() : '',
-          };
-          return;
-        }
-
-        unresolvedEntries.push({
-          roleBucket: effectiveBucket,
-          poolValue: resolvedPool,
-          directValue: resolvedDirect,
-        });
-      });
-
-      unresolvedEntries.forEach((entry) => {
-        if (entry.poolValue <= 0 && entry.directValue <= 0) return;
-        const matching = funcionarios.filter(
-          (func) => toRoleBucket(func.funcao) === entry.roleBucket,
-        );
-        if (!matching.length) return;
-
-        const poolSplit = splitAmount(entry.poolValue, matching.length);
-        const directSplit = splitAmount(entry.directValue, matching.length);
-        matching.forEach((func, idx) => {
-          const current = gorjetaState[func.funcID] || {
-            valor: '',
-            direta: '',
-            presente: false,
-            desconto: '',
-          };
-          const currentPool = parseFloat(current.valor || '0') || 0;
-          const currentDirect = parseFloat(current.direta || '0') || 0;
-          const mergedPool = round2(currentPool + (poolSplit[idx] || 0));
-          const mergedDirect = round2(currentDirect + (directSplit[idx] || 0));
-          gorjetaState[func.funcID] = {
-            valor: mergedPool > 0 ? mergedPool.toString() : '',
-            direta: mergedDirect > 0 ? mergedDirect.toString() : '',
-            presente: current.presente,
-            desconto: current.desconto,
-          };
-        });
+        const existing = gorjetaState[e.funcID];
+        gorjetaState[e.funcID] = {
+          valor: resolvedPool > 0 ? resolvedPool.toString() : '',
+          direta: resolvedDirect > 0 ? resolvedDirect.toString() : '',
+          presente: existing?.presente || false,
+          desconto: descontoValue > 0 ? descontoValue.toString() : '',
+        };
       });
 
       const presencaByFuncID = new Map<number, boolean>();
@@ -1756,6 +1739,8 @@ export default function FinanceiroDiario() {
         };
       });
 
+      snapshotUpdatedAtRef.current = data.atualizadoEm ?? null;
+      snapshotUpdatedAtRef.current = data.atualizadoEm ?? null;
       setGorjetaInputs(gorjetaState);
       setSnapshotLoaded(true);
       formDirtyRef.current = false;
@@ -1777,6 +1762,68 @@ export default function FinanceiroDiario() {
     loadSnapshot();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId, selectedDate, funcionarios]);
+
+  const handleRecalcularComRegrasTuais = async () => {
+    if (!restaurantId || !selectedDate) return;
+    setRecomputeLoading(true);
+    try {
+      const res = await apiClient.getFinanceiroSnapshotRecomputed(restaurantId, selectedDate);
+      const data = res.data;
+      if (!data || !data.entries?.length) {
+        setSnapshotMessage('Sem dados para recalcular neste dia.');
+        setTimeout(() => setSnapshotMessage(''), 3000);
+        return;
+      }
+      const currentInputs = gorjetaInputs;
+      const gorjetaState: Record<number, GorjetaEntry> = {};
+      funcionarios.forEach((f) => {
+        gorjetaState[f.funcID] = currentInputs[f.funcID] || { valor: '', direta: '', presente: false, desconto: '' };
+      });
+      const funcionarioById = new Map(funcionarios.map((f) => [f.funcID, f]));
+      (data.entries || []).forEach((e: any) => {
+        if (e.funcID == null) return;
+        if (gorjetaState[e.funcID] === undefined) return;
+        const entryFunc = funcionarioById.get(Number(e.funcID));
+        const employeeBucket = entryFunc ? toRoleBucket(entryFunc.funcao || '') : '';
+        const roleBucket = toRoleBucket(e.role || '');
+        const effectiveBucket = employeeBucket || roleBucket;
+        const poolValue = Number(e.valor_pool || 0);
+        const directValue = Number(e.valor_direto || 0);
+        const paidValue = Number(e.valor_pago || 0);
+        const hasExplicitInput = poolValue > 0 || directValue > 0;
+        const legacyAbsoluteValue =
+          (effectiveBucket === 'chamador' || employeeBucket === 'chamador') && !hasExplicitInput
+            ? paidValue : 0;
+        const legacyStaffPoolValue =
+          (effectiveBucket === 'staff' || employeeBucket === 'staff') && !hasExplicitInput
+            ? paidValue : 0;
+        const resolvedPool = poolValue > 0 ? poolValue : legacyStaffPoolValue;
+        const resolvedDirect = directValue > 0 ? directValue : legacyAbsoluteValue;
+        const descontoValue = Number(e.desconto || 0);
+        const existing = gorjetaState[e.funcID];
+        gorjetaState[e.funcID] = {
+          valor: resolvedPool > 0 ? resolvedPool.toString() : '',
+          direta: resolvedDirect > 0 ? resolvedDirect.toString() : '',
+          presente: existing?.presente || false,
+          desconto: descontoValue > 0 ? descontoValue.toString() : '',
+        };
+      });
+      if (data.faturamento_inserido != null) {
+        setFaturamentoGlobal(String(data.faturamento_inserido));
+      }
+      setGorjetaInputs(gorjetaState);
+      formDirtyRef.current = true;
+      setFormDirty(true);
+      setSnapshotMessage('Valores recalculados com regras atuais. Verifique e salve se correto.');
+      setTimeout(() => setSnapshotMessage(''), 5000);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message;
+      setSnapshotMessage(Array.isArray(msg) ? msg.join(', ') : msg || 'Erro ao recalcular.');
+      setTimeout(() => setSnapshotMessage(''), 4000);
+    } finally {
+      setRecomputeLoading(false);
+    }
+  };
 
   if (authorized === null) return <Layout><div className={styles.container}><p className={styles.muted}>Verificando permissões…</p></div></Layout>;
 
@@ -1849,6 +1896,18 @@ export default function FinanceiroDiario() {
               {snapshotLoaded && (
                 <span className={styles.metaText}>Modo edição: dados carregados</span>
               )}
+            </div>
+            <div className={styles.selectGroup}>
+              <label>&nbsp;</label>
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                onClick={handleRecalcularComRegrasTuais}
+                disabled={recomputeLoading || snapshotLoading || !restaurantId || !snapshotLoaded}
+                title="Recalcula os valores usando as regras e funcionários actuais (não altera dados guardados)"
+              >
+                {recomputeLoading ? 'Recalculando...' : 'Recalcular com regras atuais'}
+              </button>
             </div>
           </div>
         </div>
