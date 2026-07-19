@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { apiClient } from '../lib/api';
+import { RESTAURANT_PAGE_ROLES, isReadOnlyRole } from '../lib/roles';
+import ReadOnlyBanner from '../components/ReadOnlyBanner';
 import styles from '../styles/financeiro-diario.module.css';
 import { useSessionPageState } from '../hooks/useSessionPageState';
 
@@ -58,7 +60,6 @@ interface RegraFormState {
   ordem: string;
 }
 
-const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'];
 
 const DEFAULT_REGRA_FORM: RegraFormState = {
   role_name: '',
@@ -153,6 +154,7 @@ export default function Restaurantes() {
   const router = useRouter();
 
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [isReadOnly, setIsReadOnly] = useState(false);
   const [restaurantes, setRestaurantes] = useState<Restaurante[]>([]);
   const [regrasMap, setRegrasMap] = useState<Record<number, RegraDistribuicao[]>>({});
   const [knownRoles, setKnownRoles] = useState<string[]>([]);
@@ -194,11 +196,12 @@ export default function Restaurantes() {
 
         const res = await apiClient.me();
         const role: string = res.data?.role || '';
-        if (!ALLOWED_ROLES.includes(role)) {
+        if (!RESTAURANT_PAGE_ROLES.includes(role)) {
           router.replace('/');
           return;
         }
 
+        setIsReadOnly(isReadOnlyRole(role));
         setAuthorized(true);
         await fetchRestaurantes();
       } catch {
@@ -526,6 +529,7 @@ export default function Restaurantes() {
   return (
     <Layout>
       <div className={styles.container}>
+        <ReadOnlyBanner visible={isReadOnly} />
         <div className={styles.pageHeader}>
           <div>
             <p className={styles.kicker}>Administracao</p>
@@ -535,16 +539,18 @@ export default function Restaurantes() {
             </p>
           </div>
           <div className={styles.filters} style={{ alignItems: 'flex-end' }}>
+            {!isReadOnly && (
             <button onClick={openCreateForm} className={styles.btnPrimary}>
               {showForm && !editingId ? 'Fechar formulario' : 'Novo restaurante'}
             </button>
+            )}
           </div>
         </div>
 
         {error && <div className={styles.error}>{error}</div>}
         {success && <div className={styles.info}>{success}</div>}
 
-        {showForm && (
+        {showForm && !isReadOnly && (
           <div className={styles.section} style={{ marginBottom: '20px' }}>
             <div className={styles.sectionHeader}>
               <div>
@@ -696,6 +702,8 @@ export default function Restaurantes() {
                       </div>
 
                       <div className={styles.restaurantCardActions}>
+                        {!isReadOnly && (
+                          <>
                         <button
                           onClick={() => handleEditRestaurante(rest)}
                           className={styles.btnInfo}
@@ -708,6 +716,8 @@ export default function Restaurantes() {
                         >
                           {rest.ativo ? 'Desativar' : 'Ativar'}
                         </button>
+                          </>
+                        )}
                         <button
                           onClick={() => {
                             if (isExpanded) {
@@ -775,6 +785,7 @@ export default function Restaurantes() {
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            {!isReadOnly && (
                             <button
                               onClick={() => {
                                 if (isRuleEditorOpen && !isEditingRuleForRest) {
@@ -790,10 +801,11 @@ export default function Restaurantes() {
                                 ? 'Cancelar'
                                 : 'Nova regra'}
                             </button>
+                            )}
                           </div>
                         </div>
 
-                        {isRuleEditorOpen && (
+                        {isRuleEditorOpen && !isReadOnly && (
                           <div
                             style={{
                               background: '#f8fafc',
@@ -1235,6 +1247,8 @@ export default function Restaurantes() {
                                       </td>
                                       <td>
                                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                          {!isReadOnly && (
+                                            <>
                                           <button
                                             onClick={() => openEditRegraEditor(rest.restID, r)}
                                             className={styles.btnInfo}
@@ -1259,6 +1273,8 @@ export default function Restaurantes() {
                                           >
                                             Remover
                                           </button>
+                                            </>
+                                          )}
                                         </div>
                                       </td>
                                     </tr>

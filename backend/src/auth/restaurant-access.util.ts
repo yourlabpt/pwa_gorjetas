@@ -1,9 +1,9 @@
 import { ForbiddenException } from '@nestjs/common';
-import { isAdminLike } from './role.util';
+import { hasGlobalReadAccess } from './role.util';
 
 export function getAllowedRestaurantes(user: any): number[] | undefined {
   if (!user) return [];
-  if (isAdminLike(user.role)) return undefined;
+  if (hasGlobalReadAccess(user.role)) return undefined;
   return (user.restaurantes || []).map((r: any) => Number(r.restID ?? r));
 }
 

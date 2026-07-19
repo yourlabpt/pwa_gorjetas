@@ -26,6 +26,7 @@ const roleLabel: Record<string, string> = {
   ADMIN: 'Administrador',
   SUPERVISOR: 'Supervisor',
   GERENTE: 'Gerente',
+  VISUALIZADOR: 'Visualizador',
 };
 
 export default function Usuarios() {
@@ -55,8 +56,8 @@ export default function Usuarios() {
   const roleOptions = useMemo(
     () =>
       sessionRole === 'SUPER_ADMIN'
-        ? ['GERENTE', 'SUPERVISOR', 'ADMIN']
-        : ['GERENTE', 'SUPERVISOR'],
+        ? ['GERENTE', 'SUPERVISOR', 'VISUALIZADOR', 'ADMIN']
+        : ['GERENTE', 'SUPERVISOR', 'VISUALIZADOR'],
     [sessionRole],
   );
 
@@ -175,7 +176,7 @@ export default function Usuarios() {
       setSuccess('');
 
       await apiClient.updateUserRole(selectedUser.id, role);
-      if (role !== 'ADMIN') {
+      if (role !== 'ADMIN' && role !== 'VISUALIZADOR') {
         await apiClient.setUserRestaurants(selectedUser.id, selectedRests);
       }
 
@@ -441,7 +442,7 @@ export default function Usuarios() {
                       <td>{u.email}</td>
                       <td>{roleLabel[u.role] || u.role}</td>
                       <td>
-                        {u.role === 'ADMIN' || u.role === 'SUPER_ADMIN'
+                        {u.role === 'ADMIN' || u.role === 'SUPER_ADMIN' || u.role === 'VISUALIZADOR'
                           ? 'Todos'
                           : u.restaurantes?.map((r) => r.restID).join(', ') || '—'}
                       </td>
@@ -517,7 +518,7 @@ export default function Usuarios() {
               >
                 {restaurantes.map((r) => {
                   const checked = selectedRests.includes(r.restID);
-                  const disabledSelection = role === 'ADMIN';
+                  const disabledSelection = role === 'ADMIN' || role === 'VISUALIZADOR';
                   return (
                     <label
                       key={r.restID}

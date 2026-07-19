@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { apiClient } from '../lib/api';
+import { OPERATIONAL_ROLES, isReadOnlyRole } from '../lib/roles';
+import ReadOnlyBanner from '../components/ReadOnlyBanner';
 import styles from '../styles/financeiro-diario.module.css';
 import { useSessionPageState } from '../hooks/useSessionPageState';
 
@@ -30,11 +32,10 @@ const DEFAULT_FUNCOES: string[] = [];
 const defaultFuncao = (options: string[] = DEFAULT_FUNCOES) =>
   options.length > 0 ? options[0] : '';
 
-const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'GERENTE'];
-
 export default function Funcionarios() {
   const router = useRouter();
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [isReadOnly, setIsReadOnly] = useState(false);
   const [restaurantes, setRestaurantes] = useState<Restaurante[]>([]);
   const [restID, setRestID] = useSessionPageState<number | null>('restID', null);
   const [funcoesDisponiveis, setFuncoesDisponiveis] = useState<string[]>(DEFAULT_FUNCOES);
@@ -90,7 +91,8 @@ export default function Funcionarios() {
         if (!token) { router.replace('/login'); return; }
         const res = await apiClient.me();
         const role: string = res.data?.role || '';
-        if (!ALLOWED_ROLES.includes(role)) { router.replace('/'); return; }
+        if (!OPERATIONAL_ROLES.includes(role)) { router.replace('/'); return; }
+        setIsReadOnly(isReadOnlyRole(role));
         setAuthorized(true);
         loadRestaurant();
       } catch {
@@ -451,6 +453,7 @@ export default function Funcionarios() {
   return (
     <Layout>
       <div className={styles.container}>
+        <ReadOnlyBanner visible={isReadOnly} />
         <div className={styles.pageHeader}>
           <div>
             <p className={styles.kicker}>Administração</p>
@@ -460,6 +463,7 @@ export default function Funcionarios() {
             </p>
           </div>
           <div className={styles.filters}>
+            {!isReadOnly && (
             <button
               type="button"
               onClick={() => setShowForm(!showForm)}
@@ -467,6 +471,7 @@ export default function Funcionarios() {
             >
               {showForm ? 'Fechar formulário' : '+ Novo Funcionário'}
             </button>
+            )}
           </div>
         </div>
 
@@ -503,7 +508,7 @@ export default function Funcionarios() {
           </div>
         )}
 
-        {showForm && (
+        {showForm && !isReadOnly && (
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <div>
@@ -787,6 +792,8 @@ export default function Funcionarios() {
                         </td>
                         <td>
                           <div className={styles.filters}>
+                            {!isReadOnly && (
+                              <>
                             <button
                               type="button"
                               onClick={() => handleEdit(func)}
@@ -808,6 +815,8 @@ export default function Funcionarios() {
                             >
                               Eliminar
                             </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -848,6 +857,7 @@ export default function Funcionarios() {
                             {func.deletedAt ? new Date(func.deletedAt).toLocaleDateString('pt-PT') : '-'}
                           </td>
                           <td style={{ textDecoration: 'none' }}>
+                            {!isReadOnly && (
                             <button
                               type="button"
                               onClick={() => handleRestore(func)}
@@ -855,6 +865,7 @@ export default function Funcionarios() {
                             >
                               Restaurar
                             </button>
+                            )}
                           </td>
                         </tr>
                       ))}

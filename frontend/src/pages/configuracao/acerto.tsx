@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import { apiClient } from '../../lib/api';
+import { OPERATIONAL_ROLES, isReadOnlyRole } from '../../lib/roles';
+import ReadOnlyBanner from '../../components/ReadOnlyBanner';
 import styles from '../../styles/financeiro-diario.module.css';
+
 import { useSessionPageState } from '../../hooks/useSessionPageState';
 
 interface ConfiguracaoAcerto {
@@ -20,7 +23,6 @@ interface Restaurante {
   name: string;
 }
 
-const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'GERENTE'];
 
 const baseCalculoLabel: Record<string, string> = {
   GORJETA_TOTAL: 'Percentual das gorjetas totais',
@@ -37,6 +39,7 @@ const normalizeError = (err: any, fallback: string) => {
 export default function ConfiguracaoAcertoPage() {
   const router = useRouter();
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [isReadOnly, setIsReadOnly] = useState(false);
   const [restaurantes, setRestaurantes] = useState<Restaurante[]>([]);
   const [selectedRestID, setSelectedRestID] = useSessionPageState<number | null>(
     'acerto_selected_restID',
@@ -68,11 +71,12 @@ export default function ConfiguracaoAcertoPage() {
 
         const meRes = await apiClient.me();
         const role: string = meRes.data?.role || '';
-        if (!ALLOWED_ROLES.includes(role)) {
+        if (!OPERATIONAL_ROLES.includes(role)) {
           router.replace('/');
           return;
         }
 
+        setIsReadOnly(isReadOnlyRole(role));
         setAuthorized(true);
 
         const restRes = await apiClient.getRestaurantes(true);
@@ -248,6 +252,7 @@ export default function ConfiguracaoAcertoPage() {
   return (
     <Layout>
       <div className={styles.container}>
+        <ReadOnlyBanner visible={isReadOnly} />
         <div className={styles.pageHeader}>
           <div>
             <p className={styles.kicker}>Configuração</p>
@@ -257,6 +262,7 @@ export default function ConfiguracaoAcertoPage() {
             </p>
           </div>
           <div className={styles.filters}>
+            {!isReadOnly && (
             <button
               type="button"
               className={styles.btnSuccess}
@@ -274,6 +280,7 @@ export default function ConfiguracaoAcertoPage() {
             >
               + Nova configuração
             </button>
+            )}
           </div>
         </div>
 
@@ -317,7 +324,7 @@ export default function ConfiguracaoAcertoPage() {
           </div>
         </div>
 
-        {showForm && (
+        {showForm && !isReadOnly && (
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <div>
@@ -441,6 +448,8 @@ export default function ConfiguracaoAcertoPage() {
                       </td>
                       <td>
                         <div className={styles.filters}>
+                          {!isReadOnly && (
+                            <>
                           <button
                             type="button"
                             className={styles.btnInfo}
@@ -455,6 +464,8 @@ export default function ConfiguracaoAcertoPage() {
                           >
                             Apagar
                           </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

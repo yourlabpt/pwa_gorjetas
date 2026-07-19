@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserRole } from '@prisma/client';
-import { isAdminLike, isSuperAdmin } from '../auth/role.util';
+import { isAdminLike, isSuperAdmin, isVisualizador } from '../auth/role.util';
 import * as bcrypt from 'bcryptjs';
 
 const ROLE_MANAGER = ((UserRole as any).GERENTE ||
@@ -76,6 +76,7 @@ export class UsersService {
       'SUPER_ADMIN',
       'ADMIN',
       'SUPERVISOR',
+      'VISUALIZADOR',
       ROLE_MANAGER,
     ]);
     if (!allowedRoles.has(normalizedRole)) {
@@ -114,9 +115,9 @@ export class UsersService {
     const user = await this.findOne(id);
     this.assertCanManageTarget(actor, user.id, user.role);
 
-    if (isAdminLike(user.role)) {
+    if (isAdminLike(user.role) || isVisualizador(user.role)) {
       throw new ForbiddenException(
-        'Usuários Administrador/SUPER_ADMIN já possuem acesso total',
+        'Usuários Administrador/SUPER_ADMIN/Visualizador já possuem acesso total',
       );
     }
 

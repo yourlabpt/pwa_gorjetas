@@ -1,6 +1,8 @@
 # Controlo de Acesso por Página
 
-Cada página do frontend define a constante `ALLOWED_ROLES` no topo do ficheiro, listando os papéis que têm permissão de acesso. Utilizadores sem o papel correto são redirecionados para `/` (ou `/login` se não houver token).
+Cada página do frontend verifica o papel do utilizador via `GET /auth/me` e redireciona quem não tiver permissão para `/` (ou `/login` se não houver token). As constantes partilhadas estão em [`frontend/src/lib/roles.ts`](../frontend/src/lib/roles.ts).
+
+No backend, mutações de utilizadores `VISUALIZADOR` são bloqueadas globalmente pelo `WriteAccessGuard` (exceto login, logout e `POST /faturamento-diario/compute`).
 
 ## Papéis disponíveis
 
@@ -10,33 +12,45 @@ Cada página do frontend define a constante `ALLOWED_ROLES` no topo do ficheiro,
 | `ADMIN` | Administrador — acesso total |
 | `SUPERVISOR` | Supervisor — acesso operacional e de configuração |
 | `GERENTE` | Gerente — acesso ao dia-a-dia do restaurante |
+| `VISUALIZADOR` | Visualizador — leitura global (todos os restaurantes), sem alterações |
 
 ## Mapeamento de acesso por página
 
-| Página | Caminho | `ALLOWED_ROLES` |
+| Página | Caminho | Papéis permitidos |
 |---|---|---|
-| Início | `/` | `SUPER_ADMIN`, `ADMIN`, `SUPERVISOR`, `GERENTE` |
-| Financeiro Diário | `/financeiro-diario` | `SUPER_ADMIN`, `ADMIN`, `SUPERVISOR`, `GERENTE` |
-| Funcionários | `/funcionarios` | `SUPER_ADMIN`, `ADMIN`, `SUPERVISOR`, `GERENTE` |
-| Relatórios | `/relatorios` | `SUPER_ADMIN`, `ADMIN`, `SUPERVISOR`, `GERENTE` |
-| Configuração | `/configuracao` | `SUPER_ADMIN`, `ADMIN`, `SUPERVISOR`, `GERENTE` |
-| Configuração de Acerto | `/configuracao/acerto` | `SUPER_ADMIN`, `ADMIN`, `SUPERVISOR`, `GERENTE` |
-| Configuração de Acerto | `/configuracao/acerto` | `SUPER_ADMIN`, `ADMIN`, `SUPERVISOR`, `GERENTE` |
-| Configuração de Gorjetas | `/configuracao-gorjetas` | legado, redireciona para `/restaurantes` |
-| Restaurantes | `/restaurantes` | `SUPER_ADMIN`, `ADMIN`, `SUPERVISOR` |
+| Início | `/` | Operacionais + `VISUALIZADOR` |
+| Financeiro Diário | `/financeiro-diario` | Operacionais + `VISUALIZADOR` (UI read-only) |
+| Acerto Final | `/acerto-final` | Operacionais + `VISUALIZADOR` (UI read-only) |
+| Funcionários | `/funcionarios` | Operacionais + `VISUALIZADOR` (UI read-only) |
+| Relatórios | `/relatorios` | Operacionais + `VISUALIZADOR` |
+| Configuração | `/configuracao` | Operacionais + `VISUALIZADOR` |
+| Configuração de Acerto | `/configuracao/acerto` | Operacionais + `VISUALIZADOR` (UI read-only) |
+| Restaurantes | `/restaurantes` | `SUPER_ADMIN`, `ADMIN`, `SUPERVISOR`, `VISUALIZADOR` (UI read-only) |
 | Usuários | `/usuarios` | `SUPER_ADMIN`, `ADMIN` |
+| Auditoria | `/auditoria` | `SUPER_ADMIN` |
 
 > **Login** (`/login`) é público.
 > **Registo** (`/register`) é público para criar contas `GERENTE`/`SUPERVISOR`.
 > Criação de `ADMIN` continua restrita a `SUPER_ADMIN`.
+> Criação de `VISUALIZADOR` é feita por `ADMIN`/`SUPER_ADMIN` em `/usuarios`.
+
+## VISUALIZADOR — enforcement
+
+| Camada | Comportamento |
+|---|---|
+| API (`WriteAccessGuard`) | Bloqueia POST/PUT/PATCH/DELETE; permite GET e compute |
+| Restaurantes | Leitura global via `hasGlobalReadAccess()` |
+| UI | Banner read-only + botões de mutação ocultos/desativados |
 
 ## Como alterar o acesso a uma página
 
-Abra o ficheiro da página e edite o array `ALLOWED_ROLES` no início do componente:
+Edite [`frontend/src/lib/roles.ts`](../frontend/src/lib/roles.ts) ou o array usado na página:
 
 ```typescript
-// Exemplo: restringir /relatorios apenas a ADMIN e SUPERVISOR
-const ALLOWED_ROLES = ['ADMIN', 'SUPERVISOR'];
-```
+import { OPERATIONAL_ROLES } from '../lib/roles';
 
-A lógica de verificação é sempre a mesma: ao montar a página, é feita uma chamada a `GET /auth/me` para obter o papel do utilizador autenticado. Se o papel não constar em `ALLOWED_ROLES`, o utilizador é redirecionado.
+if (!OPERATIONAL_ROLES.includes(role)) {
+  router.replace('/');
+  return;
+}
+```

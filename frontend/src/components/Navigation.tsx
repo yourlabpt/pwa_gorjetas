@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import styles from './Navigation.module.css';
 import { apiClient } from '../lib/api';
+import { roleDisplayLabel } from '../lib/roles';
 import { clearSessionPageState } from '../hooks/useSessionPageState';
 
 export default function Navigation() {
@@ -83,16 +84,7 @@ export default function Navigation() {
 
   const userInitial = (userEmail || '?').slice(0, 1).toUpperCase();
   const isLoggedIn = Boolean(userEmail);
-  const userRoleLabel =
-    userRole === 'GERENTE'
-      ? 'Gerente'
-      : userRole === 'SUPERVISOR'
-      ? 'Supervisor'
-      : userRole === 'ADMIN'
-      ? 'Administrador'
-      : userRole === 'SUPER_ADMIN'
-      ? 'Super Administrador'
-      : userRole;
+  const userRoleLabel = isLoggedIn ? roleDisplayLabel(userRole) : '';
 
   return (
     <>

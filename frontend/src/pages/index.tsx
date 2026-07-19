@@ -3,9 +3,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { apiClient } from '../lib/api';
+import { OPERATIONAL_ROLES } from '../lib/roles';
 import styles from '../styles/financeiro-diario.module.css';
-
-const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'GERENTE'];
 
 export default function Home() {
   const router = useRouter();
@@ -18,7 +17,7 @@ export default function Home() {
         if (!token) { router.replace('/login'); return; }
         const res = await apiClient.me();
         const role: string = res.data?.role || '';
-        if (!ALLOWED_ROLES.includes(role)) { router.replace('/'); return; }
+        if (!OPERATIONAL_ROLES.includes(role)) { router.replace('/'); return; }
         setAuthorized(true);
       } catch {
         router.replace('/login');

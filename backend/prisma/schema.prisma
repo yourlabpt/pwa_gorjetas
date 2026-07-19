@@ -17,6 +17,7 @@ enum UserRole {
   ADMIN
   GERENTE
   SUPERVISOR
+  VISUALIZADOR
 }
 
 // ===== Payout Rule Enums =====

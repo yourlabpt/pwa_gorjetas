@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { apiClient } from '../lib/api';
+import { OPERATIONAL_ROLES, isReadOnlyRole } from '../lib/roles';
+import ReadOnlyBanner from '../components/ReadOnlyBanner';
 import styles from '../styles/financeiro-diario.module.css';
 import { useSessionPageState } from '../hooks/useSessionPageState';
 
@@ -92,8 +94,6 @@ interface AggregatedEmployeeRow {
   settlementMode: SettlementModeSummary;
   sourceRatios: SourceRatios;
 }
-
-const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'GERENTE'];
 
 interface SavedAcertoEntry {
   funcID: number;
@@ -276,6 +276,7 @@ export default function AcertoFinalPage() {
   const router = useRouter();
 
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [isReadOnly, setIsReadOnly] = useState(false);
   const [restaurantes, setRestaurantes] = useState<Restaurante[]>([]);
   const [restID, setRestID] = useSessionPageState<number | null>('acertoFinalRestID', null);
   const [fromDate, setFromDate] = useSessionPageState<string>('acertoFinalFrom', FIRST_DAY_OF_MONTH);
@@ -390,11 +391,12 @@ export default function AcertoFinalPage() {
 
         const meRes = await apiClient.me();
         const role: string = meRes.data?.role || '';
-        if (!ALLOWED_ROLES.includes(role)) {
+        if (!OPERATIONAL_ROLES.includes(role)) {
           router.replace('/');
           return;
         }
 
+        setIsReadOnly(isReadOnlyRole(role));
         setAuthorized(true);
         await loadRestaurantes();
       } catch {
@@ -997,6 +999,7 @@ export default function AcertoFinalPage() {
   return (
     <Layout>
       <div className={styles.container}>
+        <ReadOnlyBanner visible={isReadOnly} />
         <div className={styles.pageHeader}>
           <div>
             <p className={styles.kicker}>Fechamento por período</p>
@@ -1077,6 +1080,8 @@ export default function AcertoFinalPage() {
                 {currency(round2(calculations.totalAcumulado - calculations.totalAcerto))}
               </strong>
             </div>
+            {!isReadOnly && (
+              <>
             <button
               type="button"
               className={styles.btnSecondary}
@@ -1095,6 +1100,8 @@ export default function AcertoFinalPage() {
             >
               {saving ? 'Salvando...' : 'Salvar'}
             </button>
+              </>
+            )}
             {formDirty && (
               <span className={styles.unsavedBadge}><span className={styles.unsavedDot} />Não salvo</span>
             )}
@@ -1150,6 +1157,8 @@ export default function AcertoFinalPage() {
                 value={formulaMultiplier}
                 onChange={(e) => { formDirtyRef.current = true; setFormDirty(true); setFormulaMultiplier(e.target.value); }}
                 placeholder="1.00"
+                disabled={isReadOnly}
+                readOnly={isReadOnly}
               />
             </div>
             <div className={styles.inputGroup}>
@@ -1160,17 +1169,23 @@ export default function AcertoFinalPage() {
                 value={formulaOffset}
                 onChange={(e) => { formDirtyRef.current = true; setFormDirty(true); setFormulaOffset(e.target.value); }}
                 placeholder="0.00"
+                disabled={isReadOnly}
+                readOnly={isReadOnly}
               />
             </div>
           </div>
 
           <div className={styles.filters} style={{ marginTop: 10 }}>
+            {!isReadOnly && (
+              <>
             <button type="button" className={styles.btnSecondary} onClick={applyFormula}>
               Aplicar fórmula
             </button>
             <button type="button" className={styles.btnSecondary} onClick={resetToSuggested}>
               Voltar ao sugerido
             </button>
+              </>
+            )}
           </div>
         </section>
 
@@ -1313,7 +1328,10 @@ export default function AcertoFinalPage() {
                                   className={styles.smallInput}
                                   value={acertoInputs[row.funcID] ?? row.sugeridoAcerto.toFixed(2)}
                                   onChange={(e) => handleAcertoChange(row.funcID, e.target.value)}
+                                  disabled={isReadOnly}
+                                  readOnly={isReadOnly}
                                 />
+                                {!isReadOnly && (
                                 <button
                                   type="button"
                                   className={`${styles.btnSecondary} ${styles.rowDistributeBtn}`}
@@ -1323,6 +1341,7 @@ export default function AcertoFinalPage() {
                                 >
                                   Distribuir individual
                                 </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -1398,6 +1417,7 @@ export default function AcertoFinalPage() {
                             >
                               Ver
                             </button>
+                            {!isReadOnly && (
                             <button
                               type="button"
                               className={styles.btnDanger}
@@ -1406,6 +1426,7 @@ export default function AcertoFinalPage() {
                             >
                               Eliminar
                             </button>
+                            )}
                           </div>
                         </td>
                       </tr>

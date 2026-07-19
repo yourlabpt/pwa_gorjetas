@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { apiClient } from '../lib/api';
+import { OPERATIONAL_ROLES } from '../lib/roles';
 import styles from '../styles/financeiro-diario.module.css';
 import { useSessionPageState } from '../hooks/useSessionPageState';
 
@@ -123,7 +124,7 @@ interface AcertoPeriodo {
   entries: AcertoEntry[];
 }
 
-const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'GERENTE'];
+
 const round2 = (value: number) => Math.round(value * 100) / 100;
 const defaultSourceRatios: SourceRatios = {
   TIP_POOL: 1,
@@ -214,7 +215,7 @@ export default function Relatorios() {
         if (!token) { router.replace('/login'); return; }
         const res = await apiClient.me();
         const role: string = res.data?.role || '';
-        if (!ALLOWED_ROLES.includes(role)) { router.replace('/'); return; }
+        if (!OPERATIONAL_ROLES.includes(role)) { router.replace('/'); return; }
         setAuthorized(true);
         loadRestaurant();
       } catch {

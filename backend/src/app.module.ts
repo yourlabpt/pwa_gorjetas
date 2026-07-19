@@ -12,6 +12,7 @@ import { AcertoPeridoModule } from './acerto-periodo/acerto-periodo.module';
 import { AuthModule } from './auth/auth.module';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { WriteAccessGuard } from './auth/write-access.guard';
 import { RestaurantAccessGuard } from './auth/restaurant-access.guard';
 import { UsersModule } from './users/users.module';
 import { FechoFinanceiroModule } from './fecho-financeiro/fecho-financeiro.module';
@@ -50,6 +51,10 @@ import { SessionsModule } from './sessions/sessions.module';
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: WriteAccessGuard,
     },
     {
       provide: APP_GUARD,

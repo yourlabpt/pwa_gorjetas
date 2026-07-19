@@ -3,6 +3,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { apiClient } from '../lib/api';
+import { OPERATIONAL_ROLES, isReadOnlyRole } from '../lib/roles';
+import ReadOnlyBanner from '../components/ReadOnlyBanner';
+import readOnlyStyles from '../components/ReadOnlyBanner.module.css';
 import styles from '../styles/financeiro-diario.module.css';
 import { useSessionPageState } from '../hooks/useSessionPageState';
 
@@ -217,12 +220,12 @@ const FORM_SESSION_PREFIX = 'fin-diario-form';
 const buildFormSessionKey = (restId: number, date: string) =>
   `${FORM_SESSION_PREFIX}:${restId}:${date}`;
 
-const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'GERENTE'];
 const TODAY = new Date().toISOString().split('T')[0];
 
 export default function FinanceiroDiario() {
   const router = useRouter();
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [isReadOnly, setIsReadOnly] = useState(false);
   const [restaurantes, setRestaurantes] = useState<Restaurante[]>([]);
   const [restaurantId, setRestaurantId] = useSessionPageState<number | null>(
     'restaurantId',
@@ -331,7 +334,8 @@ export default function FinanceiroDiario() {
         if (!token) { router.replace('/login'); return; }
         const meRes = await apiClient.me();
         const role: string = meRes.data?.role || '';
-        if (!ALLOWED_ROLES.includes(role)) { router.replace('/'); return; }
+        if (!OPERATIONAL_ROLES.includes(role)) { router.replace('/'); return; }
+        setIsReadOnly(isReadOnlyRole(role));
         setAuthorized(true);
         try {
           const res = await apiClient.getRestaurantes(true);
@@ -1829,7 +1833,8 @@ export default function FinanceiroDiario() {
 
   return (
     <Layout>
-      <div className={styles.container}>
+      <div className={`${styles.container} ${isReadOnly ? readOnlyStyles.readOnlyShell : ''}`}>
+        <ReadOnlyBanner visible={isReadOnly} />
         <div className={styles.pageHeader}>
           <div>
             <p className={styles.kicker}>Fechamento diário</p>
@@ -1850,6 +1855,7 @@ export default function FinanceiroDiario() {
                     parseInt(e.target.value, 10) || null,
                   )
                 }
+                data-view-allowed="true"
               >
                 <option value="">Selecione</option>
                 {restaurantes.map((rest) => (
@@ -1866,6 +1872,7 @@ export default function FinanceiroDiario() {
                 type="date"
                 value={selectedDate}
                 onChange={(e) => handleDateSelectionChange(e.target.value)}
+                data-view-allowed="true"
               />
             </div>
 
@@ -1890,6 +1897,7 @@ export default function FinanceiroDiario() {
                 className={styles.btnSecondary}
                 onClick={loadSnapshot}
                 disabled={snapshotLoading || !restaurantId}
+                data-view-allowed="true"
               >
                 {snapshotLoading ? 'Carregando...' : 'Carregar dados salvos'}
               </button>
@@ -1905,6 +1913,7 @@ export default function FinanceiroDiario() {
                 onClick={handleRecalcularComRegrasTuais}
                 disabled={recomputeLoading || snapshotLoading || !restaurantId || !snapshotLoaded}
                 title="Recalcula os valores usando as regras e funcionários actuais (não altera dados guardados)"
+                data-view-allowed="true"
               >
                 {recomputeLoading ? 'Recalculando...' : 'Recalcular com regras atuais'}
               </button>

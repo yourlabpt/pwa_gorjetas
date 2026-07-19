@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import { apiClient } from '../../lib/api';
+import { OPERATIONAL_ROLES } from '../../lib/roles';
 import styles from '../../styles/configuracao-acerto.module.css';
 
 interface Restaurante {
@@ -15,7 +16,6 @@ interface RegraDistribuicao {
   ativo: boolean;
 }
 
-const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'GERENTE'];
 
 export default function ConfiguracaoPage() {
   const router = useRouter();
@@ -36,7 +36,7 @@ export default function ConfiguracaoPage() {
 
         const me = await apiClient.me();
         const role: string = me.data?.role || '';
-        if (!ALLOWED_ROLES.includes(role)) {
+        if (!OPERATIONAL_ROLES.includes(role)) {
           router.replace('/');
           return;
         }

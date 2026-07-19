@@ -36,7 +36,7 @@ export class RegisterDto {
   password: string;
 
   @IsOptional()
-  @IsIn(['GERENTE', UserRole.SUPERVISOR, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+  @IsIn(['GERENTE', UserRole.SUPERVISOR, UserRole.VISUALIZADOR, UserRole.ADMIN, UserRole.SUPER_ADMIN])
   role?: string;
 
   @IsOptional()
