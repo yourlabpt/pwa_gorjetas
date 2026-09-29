@@ -1,5 +1,9 @@
 # Deploy & Run (Quick Guide)
 
+> ⛔ **REGRA N.º 1 — NUNCA APAGAR A BASE DE DADOS.** Nenhum comando que apague a base, volumes, tabelas ou dados (`down -v`, `prisma migrate reset`, `DROP`, `TRUNCATE`, `docker volume rm`...). Lista completa e deploy seguro em [README.md](../README.md#-regra-n-1--nunca-apagar-a-base-de-dados).
+
+**Every release:** follow [procedures/SANDBOX_AND_DEPLOY.md](procedures/SANDBOX_AND_DEPLOY.md). Never use `down -v`.
+
 ## Prereqs
 - Docker (Desktop on Windows/macOS)
 - PostgreSQL connection string (`DATABASE_URL`)

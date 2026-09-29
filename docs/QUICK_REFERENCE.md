@@ -175,11 +175,10 @@ docker-compose restart
 
 ### Prisma Errors
 ```bash
-# Reset DB (careful!)
-npx prisma migrate reset
-
 # Check migrations
 npx prisma migrate status
+
+# ⛔ NEVER: npx prisma migrate reset / db push --accept-data-loss (delete data, see README "REGRA N.º 1")
 ```
 
 ### CORS Issues

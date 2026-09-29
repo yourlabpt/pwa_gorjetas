@@ -1,5 +1,7 @@
 # Documentation Home
 
+> ⛔ **REGRA N.º 1 — NUNCA APAGAR A BASE DE DADOS.** Nenhum comando que apague a base, volumes, tabelas ou dados (`down -v`, `prisma migrate reset`, `DROP`, `TRUNCATE`, `docker volume rm`...). Lista completa e deploy seguro em [README.md](../README.md#-regra-n-1--nunca-apagar-a-base-de-dados).
+
 A documentação agora está organizada por tipo.
 
 ## Tutorials

@@ -1,7 +1,12 @@
+# Sandbox stack (isolated project "pwa_sandbox"): same Docker image as production,
+# fed with a copy of a production backup restored into a NEW, EMPTY database.
+# Driven by scripts/sandbox-test.sh. Never run `down -v` here (README "REGRA N.º 1").
+name: pwa_sandbox
+
 services:
   db_test:
     image: postgres:16
-    container_name: pwa_restaurantes_test_db
+    container_name: pwa_sandbox_db
     restart: unless-stopped
     environment:
       POSTGRES_USER: app
@@ -25,7 +30,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: "/api"
-    container_name: pwa_restaurantes_test_app
+    container_name: pwa_sandbox_app
     restart: unless-stopped
     depends_on:
       db_test:
@@ -33,7 +38,7 @@ services:
     env_file:
       - .env.localtest
     environment:
-      DATABASE_URL: postgres://app:app@db_test:5432/app_test
+      DATABASE_URL: postgres://app:app@db_test:5432/${SANDBOX_DB:-app_test}
       NEXT_PUBLIC_API_URL: /api
       BACKEND_INTERNAL_URL: http://127.0.0.1:3001
       PORT: 3001

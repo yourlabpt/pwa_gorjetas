@@ -57,6 +57,12 @@ check_container() {
 }
 
 backup_database() {
+  create_backup_files
+  cleanup_old_backups
+}
+
+# Writes a .sql and a .dump of the current database. Never deletes anything.
+create_backup_files() {
   check_container
 
   TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
@@ -82,8 +88,6 @@ backup_database() {
   echo -e "   SQL : $SQL_BACKUP_FILE ($SQL_SIZE)"
   echo -e "   DUMP: $DUMP_BACKUP_FILE ($DUMP_SIZE)"
   echo -e "${YELLOW}💡 Use .dump for safest post-migration rollback.${NC}"
-
-  cleanup_old_backups
 }
 
 cleanup_old_backups() {
@@ -137,6 +141,14 @@ restore_database() {
   if [[ ! $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
     echo "Restore cancelled."
     exit 0
+  fi
+
+  # Safety net: snapshot the CURRENT data before it is replaced, so a restore
+  # can never lose data. Abort the restore if this backup fails.
+  echo -e "${YELLOW}📦 Taking a safety backup of the current data before restoring...${NC}"
+  if ! create_backup_files; then
+    echo -e "${RED}❌ Safety backup failed. Restore aborted, nothing was changed.${NC}"
+    exit 1
   fi
 
   echo -e "${YELLOW}🔄 Restoring database...${NC}"

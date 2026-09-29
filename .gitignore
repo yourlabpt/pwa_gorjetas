@@ -70,6 +70,17 @@ web_modules/
 .env.*
 !.env.production.example
 !.env.example
+!.env.localtest.example
+
+# Database dumps must not be committed (the GitHub repo is public). Already
+# tracked files stay tracked until the owner decides; deploys copy them to
+# SAFE_BACKUP_DIR before git can remove them.
+backups/
+
+# Deploy/sandbox local config and sandbox working files (never commit)
+deploy/deploy.env
+deploy/server.env
+sandbox/
 
 # Local Docker Compose overrides (never commit)
 docker-compose.override.yml

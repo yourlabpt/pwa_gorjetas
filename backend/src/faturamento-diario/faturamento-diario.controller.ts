@@ -36,13 +36,6 @@ export class FaturamentoDiarioController {
     return this.faturamentoDiarioService.create(restID, dto);
   }
 
-  @Get(':id')
-  async findById(@Param('id', ParseIntPipe) id: number) {
-    // Nota: este endpoint requer restID para validação
-    // Será ajustado com query param
-    return { message: 'Use query params' };
-  }
-
   @Get()
   async findByDate(
     @Query('restID', ParseIntPipe) restID: number,
@@ -148,6 +141,16 @@ export class FaturamentoDiarioController {
   ) {
     assertRestaurantAccess(user, restID);
     return this.faturamentoDiarioService.getRecomputedSnapshot(restID, new Date(data));
+  }
+
+  // NOTE: declared after the static GET routes ('snapshot', 'periodo/list', ...):
+  // Nest registers routes in declaration order, and ':id' would otherwise
+  // capture 'snapshot' and fail with 'numeric string is expected'.
+  @Get(':id')
+  async findById(@Param('id', ParseIntPipe) id: number) {
+    // Nota: este endpoint requer restID para validação
+    // Será ajustado com query param
+    return { message: 'Use query params' };
   }
 
   @Delete(':id')

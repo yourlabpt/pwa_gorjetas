@@ -163,11 +163,27 @@ model Funcionario {
   faturamento_distribuicoes FaturamentoDiarioDistribuicao[]
   presencas                 FuncionarioPresencaDiaria[]
   acertos_final_entries     AcertoFinalEntry[]
+  periodos                  FuncionarioPeriodoAtivo[]
 
   @@index([restID, funcao])
   @@index([restID])
   @@index([restID, deletedAt])
   @@map("funcionarios")
+}
+
+// Activity periods: an employee counts for day D when some period has
+// inicio <= D and (fim is null or fim >= D). Closed on deactivate/soft-delete,
+// opened on create/activate. Keeps past days immutable to status changes.
+model FuncionarioPeriodoAtivo {
+  id     Int       @id @default(autoincrement())
+  funcID Int
+  inicio DateTime  @db.Date
+  fim    DateTime? @db.Date
+
+  funcionario Funcionario @relation(fields: [funcID], references: [funcID], onDelete: Cascade)
+
+  @@index([funcID])
+  @@map("funcionario_periodo_ativo")
 }
 
 model FuncionarioRestaurante {

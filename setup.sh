@@ -126,9 +126,11 @@ COMPOSE_DISPLAY="${DOCKER_COMPOSE_CMD[*]}"
 echo "✅ Docker is ready"
 echo ""
 
-# Clean up old volumes
-echo "2️⃣  Cleaning up old database..."
-"${DOCKER_COMPOSE_CMD[@]}" down -v 2>/dev/null || true
+# NEVER delete the database volume here (no `down -v`).
+# docker-compose.yml and docker-compose.prod.yml share the same project and
+# volume name, so a `down -v` from this folder on the server wipes production.
+# See README.md "REGRA N.º 1".
+echo "2️⃣  Keeping existing database (no volume is ever removed)..."
 
 # Start PostgreSQL
 echo "3️⃣  Starting PostgreSQL..."
@@ -159,15 +161,37 @@ echo ""
 echo "5️⃣  Setting up Database..."
 LATEST_BACKUP="$(find_latest_backup)"
 
-if [ -n "$LATEST_BACKUP" ]; then
-  echo "   - Latest backup found. Loading current database snapshot..."
+# Only ever restore into an EMPTY database. If the database already has data,
+# keep it and just apply pending (additive) migrations.
+# Fail closed: if we cannot tell whether data exists, stop instead of restoring.
+HAS_DATA=""
+for _ in 1 2 3 4 5 6; do
+  HAS_DATA="$("${DOCKER_CMD[@]}" exec "$DB_CONTAINER_NAME" psql -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT to_regclass('public._prisma_migrations') IS NOT NULL" 2>/dev/null | tr -d '[:space:]' || true)"
+  [ "$HAS_DATA" = "t" ] || [ "$HAS_DATA" = "f" ] && break
+  sleep 5
+done
+if [ "$HAS_DATA" != "t" ] && [ "$HAS_DATA" != "f" ]; then
+  echo "❌ Could not check whether the database already has data. Nothing was restored or changed."
+  exit 1
+fi
+
+if [ "$HAS_DATA" = "t" ]; then
+  echo "   - Existing database with data found. Keeping it (no restore)."
+  echo "   - Applying pending migrations..."
+  npx prisma migrate deploy
+  LATEST_BACKUP=""
+  DB_SOURCE="Existing database kept + pending migrations applied"
+elif [ -n "$LATEST_BACKUP" ]; then
+  echo "   - Empty database. Loading latest backup snapshot..."
   restore_backup "$LATEST_BACKUP"
+  DB_SOURCE="Restored from: $(basename "$LATEST_BACKUP")"
 else
   echo "   - No backup found. Running migrations..."
   npx prisma migrate deploy
 
   echo "   - Seeding data..."
   npx prisma db seed
+  DB_SOURCE="Fresh migration + seed"
 fi
 
 echo ""
@@ -210,11 +234,7 @@ echo ""
 echo "📱 Open http://localhost:3000 in your browser"
 echo ""
 echo "🗃️  Database source:"
-if [ -n "${LATEST_BACKUP:-}" ]; then
-  echo "   - Restored from: $(basename "$LATEST_BACKUP")"
-else
-  echo "   - Fresh migration + seed"
-fi
+echo "   - ${DB_SOURCE}"
 echo ""
 echo "🔐 SUPER_ADMIN account synced:"
 echo "   - Email: $SUPER_ADMIN_EMAIL"

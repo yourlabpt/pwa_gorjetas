@@ -232,7 +232,8 @@ Add to above:
 → Edit `docker-compose.yml` or `.env` files
 
 ### Database Connection Error?
-→ `docker-compose down -v && ./setup.sh` to reset
+→ `docker compose ps` and `docker compose logs db`, then `docker compose restart db`.
+→ ⛔ Never `down -v` or any reset: it deletes all data. See [README.md](../README.md) "REGRA N.º 1".
 
 ### Can't Find Something?
 → [DOCUMENTATION_HUB.md](DOCUMENTATION_HUB.md) to navigate all docs

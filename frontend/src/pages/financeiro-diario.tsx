@@ -20,6 +20,7 @@ interface Funcionario {
   funcID: number;
   name: string;
   funcao: string;
+  ativo?: boolean;
 }
 
 interface GorjetaEntry {
@@ -373,25 +374,10 @@ export default function FinanceiroDiario() {
       try {
         setLoading(true);
         setError('');
-        const [funcRes, restRes] = await Promise.all([
-          apiClient.getFuncionarios(restaurantId, true),
-          apiClient.getRestaurante(restaurantId),
-        ]);
-
-        setFuncionarios(funcRes.data || []);
+        const restRes = await apiClient.getRestaurante(restaurantId);
 
         const basePercent = parseFloat(String(restRes.data?.percentagem_gorjeta_base)) || 11;
         setPercentualBase(basePercent);
-
-        setGorjetaInputs((prev) => {
-          const next = { ...prev };
-          (funcRes.data || []).forEach((f: Funcionario) => {
-            if (!next[f.funcID]) {
-              next[f.funcID] = { valor: '', direta: '', presente: false, desconto: '' };
-            }
-          });
-          return next;
-        });
       } catch (err) {
         setError('Erro ao carregar dados do restaurante');
       } finally {
@@ -401,6 +387,36 @@ export default function FinanceiroDiario() {
 
     loadContext();
   }, [restaurantId]);
+
+  // Employees are per day: active on the selected date or already stored in it.
+  // Inactive/deleted employees keep appearing on the days they belonged to.
+  useEffect(() => {
+    let cancelled = false;
+    const loadFuncionariosDoDia = async () => {
+      if (!restaurantId || !selectedDate) return;
+      try {
+        const funcRes = await apiClient.getFuncionariosForDay(restaurantId, selectedDate);
+        if (cancelled) return;
+        const list: Funcionario[] = funcRes.data || [];
+        setFuncionarios(list);
+        setGorjetaInputs((prev) => {
+          const next = { ...prev };
+          list.forEach((f) => {
+            if (!next[f.funcID]) {
+              next[f.funcID] = { valor: '', direta: '', presente: false, desconto: '' };
+            }
+          });
+          return next;
+        });
+      } catch (err) {
+        if (!cancelled) setError('Erro ao carregar colaboradores do dia');
+      }
+    };
+    loadFuncionariosDoDia();
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantId, selectedDate]);
 
   // ── Fecho Financeiro logic ───────────────────────────────────────────────
   const loadFecho = useCallback(async () => {
@@ -1673,6 +1689,8 @@ export default function FinanceiroDiario() {
           throw err;
         }
       }
+      // A newer load (date/employee list change) superseded this one: drop it.
+      if (myLoad !== loadCounterRef.current) return;
 
       if (!data) {
         setSnapshotMessage('Nenhum dado salvo para este dia ainda.');
@@ -2036,7 +2054,14 @@ export default function FinanceiroDiario() {
                               {func.name.slice(0, 1).toUpperCase()}
                             </span>
                             <div>
-                              <div className={styles.name}>{func.name}</div>
+                              <div className={styles.name}>
+                                {func.name}
+                                {func.ativo === false && (
+                                  <span className={styles.muted} style={{ marginLeft: 6, fontSize: '0.75em' }}>
+                                    (inativo)
+                                  </span>
+                                )}
+                              </div>
                               <div className={styles.metaText}>ID #{func.funcID}</div>
                             </div>
                           </div>

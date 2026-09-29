@@ -7,5 +7,6 @@ import { FuncionariosController } from './funcionarios.controller';
   imports: [PrismaModule],
   providers: [FuncionariosService],
   controllers: [FuncionariosController],
+  exports: [FuncionariosService],
 })
 export class FuncionariosModule {}

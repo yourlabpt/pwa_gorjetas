@@ -113,6 +113,11 @@ class ApiClient {
     return this.client.get('/funcionarios', { params });
   }
 
+  /** Employees that belong to a given day: active on it or already stored in its rows. */
+  async getFuncionariosForDay(restID: number, data: string) {
+    return this.client.get('/funcionarios', { params: { restID, data } });
+  }
+
   async getFuncionarioById(funcID: number) {
     // This will be used to get all restaurants where a funcionario works
     try {

@@ -22,6 +22,7 @@ Workflow para reduzir regressao funcional e regressao de negocio no projeto de g
 - Evitar regressao de regras ja acordadas (especialmente em producao).
 
 ## Core Invariants (Do Not Break)
+0. **REGRA N.º 1: nunca apagar a base de dados.** Nenhum comando, script, migracao ou documento pode apagar base, volume, tabela ou dados (`down -v`, `docker volume rm/prune`, `prisma migrate reset`, `db push --accept-data-loss`, `DROP`, `TRUNCATE`, `DELETE` sem `WHERE`). Migracoes so aditivas; rollback = republicar versao anterior, nunca `DROP`. Lista completa em `README.md`.
 1. Nenhuma mudanca pode eliminar rastreabilidade de usuario em acoes criticas.
 2. Eventos de login/logout e mutacoes relevantes devem ser auditaveis.
 3. Filtros por restaurante nao podem regredir em backend nem frontend.

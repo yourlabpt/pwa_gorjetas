@@ -216,9 +216,9 @@ backend/prisma/
 
 ### Common Issues & Solutions
 - **Port already in use**: Change in docker-compose.yml or .env files
-- **Database won't start**: `docker-compose down -v && ./setup.sh`
+- **Database won't start**: `docker compose logs db`, then `docker compose restart db`. ⛔ Never `down -v` (deletes all data, see README "REGRA N.º 1")
 - **Frontend can't reach API**: Check `NEXT_PUBLIC_API_URL` in frontend/.env.local
-- **Migrations failed**: `npx prisma migrate reset` (in backend/)
+- **Migrations failed**: `npx prisma migrate status` (in backend/), fix the migration, take a backup, then `npx prisma migrate deploy`. ⛔ Never `migrate reset`
 
 **See**: [QUICK_REFERENCE.md - Troubleshooting](docs/QUICK_REFERENCE.md#troubleshooting)
 

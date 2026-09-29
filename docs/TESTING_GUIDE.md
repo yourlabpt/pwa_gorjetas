@@ -599,22 +599,19 @@ time curl -X GET "http://localhost:3001/relatorios/funcionarios?restID=1"
 
 ---
 
-## Cleanup & Reset
+## Clean Test Database (without deleting anything)
 
-### Reset Everything
+⛔ There is no "reset". `down -v`, `prisma migrate reset` and dropping tables are forbidden (see [README.md](../README.md) "REGRA N.º 1").
+
+To test on a clean copy of production, run the sandbox. Each run restores the latest backup into a **new, empty** database of the isolated `pwa_sandbox` stack and tests the production image against it:
 
 ```bash
-# Stop all services
-docker-compose down
-
-# Remove data
-docker-compose down -v
-
-# Restart
-docker-compose up -d
-cd backend && npx prisma migrate reset
-npx prisma db seed
+scripts/sandbox-test.sh --pull-latest
 ```
+
+See [procedures/SANDBOX_AND_DEPLOY.md](procedures/SANDBOX_AND_DEPLOY.md).
+
+To stop services without losing data: `docker compose stop` (or `down` **without** `-v`).
 
 ---
 

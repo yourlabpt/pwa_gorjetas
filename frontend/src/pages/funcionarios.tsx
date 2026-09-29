@@ -208,7 +208,7 @@ export default function Funcionarios() {
         // Find ALL previous restaurants where this funcionario exists (same name + funcao)
         for (const rest of restaurantes) {
           try {
-            const funcResponse = await apiClient.getFuncionarios(rest.restID, true);
+            const funcResponse = await apiClient.getFuncionarios(rest.restID);
             const found = funcResponse.data.find(
               (f: Funcionario) => f.name === oldName && f.funcao === oldFuncao
             );
@@ -229,7 +229,7 @@ export default function Funcionarios() {
         // Update existing records in restaurants that remain selected
         for (const restID of currentRestaurants.filter(r => previousRestaurants.includes(r))) {
           try {
-            const funcResponse = await apiClient.getFuncionarios(restID, true);
+            const funcResponse = await apiClient.getFuncionarios(restID);
             const funcInRest = funcResponse.data.find(
               (f: Funcionario) => f.name === oldName && f.funcao === oldFuncao
             );
@@ -258,7 +258,7 @@ export default function Funcionarios() {
         // Delete funcionario from removed restaurants
         for (const restID of restaurantesToRemove) {
           try {
-            const funcResponse = await apiClient.getFuncionarios(restID, true);
+            const funcResponse = await apiClient.getFuncionarios(restID);
             const funcInRest = funcResponse.data.find(
               (f: Funcionario) => f.name === oldName && f.funcao === oldFuncao
             );
@@ -328,7 +328,7 @@ export default function Funcionarios() {
       // Check each restaurant to see if a funcionario with same name+funcao exists
       for (const rest of restaurantes) {
         try {
-          const funcResponse = await apiClient.getFuncionarios(rest.restID, true);
+          const funcResponse = await apiClient.getFuncionarios(rest.restID);
           const found = funcResponse.data.find(
             (f: Funcionario) => f.name === func.name && f.funcao === func.funcao
           );

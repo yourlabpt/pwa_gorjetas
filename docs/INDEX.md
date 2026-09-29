@@ -349,8 +349,8 @@ This implementation demonstrates:
 - See [QUICK_REFERENCE.md](QUICK_REFERENCE.md#troubleshooting)
 
 **Database errors?**
-- Run `npx prisma migrate reset` to reset
-- Run `npx prisma db seed` to re-seed
+- Run `npx prisma migrate status` to see pending/failed migrations
+- ⛔ Never `npx prisma migrate reset` or re-seed a database with data (see README "REGRA N.º 1")
 - See [QUICK_REFERENCE.md](QUICK_REFERENCE.md#database)
 
 ---

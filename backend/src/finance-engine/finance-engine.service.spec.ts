@@ -73,9 +73,50 @@ describe('FinanceEngineService', () => {
       calculate: jest.fn().mockReturnValue(baselinePayoutResult),
     } as any;
 
-    const service = new FinanceEngineService(prisma, payoutCalculator);
-    return { service, prisma, payoutCalculator };
+    const funcionarios = {
+      findForDay: jest.fn().mockResolvedValue([
+        { funcID: 1, name: 'Carlos', funcao: 'chefe de turno' },
+      ]),
+    } as any;
+
+    const service = new FinanceEngineService(prisma, payoutCalculator, funcionarios);
+    return { service, prisma, payoutCalculator, funcionarios };
   }
+
+  const dayInput = {
+    faturamento_global: 7000,
+    faturamento_com_gorjeta: 5600,
+    faturamento_sem_gorjeta: 1300,
+    valor_total_gorjetas: 700,
+  };
+
+  it('loads the participants of the computed day, not the current ativo flag', async () => {
+    const { service, funcionarios, prisma } = makeService();
+    const data = new Date('2026-01-15T00:00:00Z');
+
+    await service.computeDailyPayouts(10, dayInput, { base_percentual: 12.5, data });
+
+    expect(funcionarios.findForDay).toHaveBeenCalledWith(10, data);
+    expect(prisma.funcionario.findMany).not.toHaveBeenCalled();
+  });
+
+  it('ignores staff inputs of employees that do not belong to the day', async () => {
+    const { service } = makeService();
+
+    const result = await service.computeDailyPayouts(10, dayInput, {
+      base_percentual: 12.5,
+      insufficientFundsPolicy: 'PARTIAL',
+      staff_inputs: [
+        { funcID: 1, valor_pool: 200, valor_direto: 0 },
+        { funcID: 99, valor_pool: 500, valor_direto: 50 }, // not a participant
+      ],
+    });
+
+    expect(result.employee_breakdown.map((e) => e.funcID)).toEqual([1]);
+    expect(result.role_breakdown[0].base_value).toBe(200);
+    expect(result.role_breakdown[0].theoretical_amount).toBe(160);
+    expect(result.totals.total_from_tip_pool).toBe(160);
+  });
 
   it('uses employee input as base for PROPORTIONAL + VALOR_TOTAL_GORJETAS (zero input => zero payout)', async () => {
     const { service } = makeService();

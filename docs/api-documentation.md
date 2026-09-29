@@ -17,6 +17,11 @@ curl -X GET "http://localhost:3001/funcionarios?restID=1&ativo=true"
 To include logically deleted employees for technical audit:
 ```bash
 curl -X GET "http://localhost:3001/funcionarios?restID=1&includeDeleted=true"
+
+# Employees that belong to a given day: active on that date (activity periods)
+# or already present in that day's stored financial/presence rows.
+# Includes inactive and soft-deleted employees on purpose (history is preserved).
+curl -X GET "http://localhost:3001/funcionarios?restID=1&data=2026-09-24"
 ```
 
 Response:

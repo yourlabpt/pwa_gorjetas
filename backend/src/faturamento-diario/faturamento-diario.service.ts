@@ -9,6 +9,7 @@ import {
 } from './dto';
 import { Prisma } from '@prisma/client';
 import { FinanceEngineService } from '../finance-engine/finance-engine.service';
+import { FuncionariosService } from '../funcionarios/funcionarios.service';
 import { DailyFinanceComputation } from '../finance-engine/finance-engine.types';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AuditAction, AuditEntity } from '@prisma/client';
@@ -18,6 +19,7 @@ export class FaturamentoDiarioService {
   constructor(
     private prisma: PrismaService,
     private financeEngine: FinanceEngineService,
+    private funcionariosService: FuncionariosService,
     private eventEmitter: EventEmitter2,
   ) {}
 
@@ -93,37 +95,12 @@ export class FaturamentoDiarioService {
       return [];
     }
 
-    const funcionariosAtivos = await this.prisma.funcionario.findMany({
-      where: { restID, ativo: true },
-      select: {
-        funcID: true,
-        name: true,
-        funcao: true,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
-    const referencedFuncIDs = Array.from(
-      new Set(
-        distribRows
-          .map((row) => (row.funcID != null ? Number(row.funcID) : null))
-          .filter((funcID): funcID is number => funcID != null),
-      ),
+    // Employees that belong to this day (active on it or already stored in it),
+    // never the current ativo flag: recomputing a past day must not drop anyone.
+    const funcionariosAtivos = await this.funcionariosService.findForDay(
+      restID,
+      dataFormatada,
     );
-    const missingReferencedFuncIDs = referencedFuncIDs.filter(
-      (funcID) => !funcionariosAtivos.some((func) => func.funcID === funcID),
-    );
-    const funcionariosReferenciados = missingReferencedFuncIDs.length
-      ? await this.prisma.funcionario.findMany({
-          where: {
-            funcID: { in: missingReferencedFuncIDs },
-          },
-          select: {
-            funcID: true,
-            name: true,
-            funcao: true,
-          },
-        })
-      : [];
     const restaurante = await this.prisma.restaurante.findUnique({
       where: { restID },
       select: { percentagem_gorjeta_base: true },
@@ -172,7 +149,7 @@ export class FaturamentoDiarioService {
       staffInputs.map((entry) => [entry.funcID, entry]),
     );
     const employeeMetaByFuncID = new Map(
-      [...funcionariosAtivos, ...funcionariosReferenciados].map((f) => [
+      funcionariosAtivos.map((f) => [
         f.funcID,
         { name: f.name, funcao: f.funcao },
       ]),
@@ -629,6 +606,40 @@ export class FaturamentoDiarioService {
     context?: { userId?: number; requestId?: string; ipAddress?: string; userAgent?: string },
   ): Promise<void> {
     const dataFormatada = this.normalizeDate(dto.data);
+
+    // Participants of this day are decided server-side: employees active on the
+    // day plus anyone already stored in it. Client entries for anyone else are
+    // ignored, and stored participants the client omitted keep their stored
+    // inputs. This keeps past days immutable to employee (de)activation.
+    const participantes = await this.funcionariosService.findForDay(
+      restID,
+      dataFormatada,
+    );
+    const participanteIDs = new Set(participantes.map((f) => f.funcID));
+    const storedRows = await this.prisma.faturamentoDiarioDistribuicao.findMany({
+      where: { restID, data: dataFormatada, funcID: { not: null } },
+    });
+    const sentFuncIDs = new Set((dto.staff || []).map((s) => Number(s.funcID)));
+    const staff = [
+      ...(dto.staff || []).filter((s) => participanteIDs.has(Number(s.funcID))),
+      ...storedRows
+        .filter(
+          (row) =>
+            participanteIDs.has(row.funcID as number) &&
+            !sentFuncIDs.has(row.funcID as number),
+        )
+        .map((row) => ({
+          funcID: row.funcID as number,
+          valor_pool: row.valor_pool?.toNumber() ?? 0,
+          valor_direto: row.valor_direto?.toNumber() ?? 0,
+          valor_pago: row.valor_pago.toNumber(),
+          desconto: row.desconto?.toNumber(),
+        })),
+    ];
+    const presencas = (dto.presencas || []).filter((p) =>
+      participanteIDs.has(Number(p.funcID)),
+    );
+
     const computation = await this.financeEngine.computeDailyPayouts(
       restID,
       {
@@ -648,7 +659,7 @@ export class FaturamentoDiarioService {
         data: dataFormatada,
         staff_direct_tip_pool_total: dto.staff_direct_tip_pool_total ?? 0,
         base_percentual: dto.base_percentual,
-        staff_inputs: (dto.staff || []).map((entry) => ({
+        staff_inputs: staff.map((entry) => ({
           funcID: entry.funcID,
           valor_pool: entry.valor_pool ?? 0,
           valor_direto: entry.valor_direto ?? 0,
@@ -711,7 +722,7 @@ export class FaturamentoDiarioService {
       }
 
       const legacyStaffByFuncID = new Map(
-        (dto.staff || []).map((s) => [
+        staff.map((s) => [
           s.funcID,
           {
             valor_pool: s.valor_pool || 0,
@@ -721,20 +732,7 @@ export class FaturamentoDiarioService {
           },
         ]),
       );
-      const staffFuncIDs = Array.from(legacyStaffByFuncID.keys());
-      const employeeMetaRows =
-        staffFuncIDs.length > 0
-          ? await tx.funcionario.findMany({
-              where: {
-                funcID: { in: staffFuncIDs },
-              },
-              select: {
-                funcID: true,
-                name: true,
-                funcao: true,
-              },
-            })
-          : [];
+      const employeeMetaRows = participantes;
       const employeeMetaByFuncID = new Map(
         employeeMetaRows.map((row) => [row.funcID, { name: row.name, funcao: row.funcao }]),
       );
@@ -787,7 +785,7 @@ export class FaturamentoDiarioService {
         }
       });
 
-      (dto.staff || []).forEach((staffEntry) => {
+      staff.forEach((staffEntry) => {
         const roleFromEmployee = this.normalizeRole(
           employeeRoleByFuncID.get(staffEntry.funcID) || '',
         );
@@ -857,23 +855,20 @@ export class FaturamentoDiarioService {
 
       if (dto.presencas) {
         const deduped = new Map<number, boolean>();
-        dto.presencas.forEach((entry) => {
+        presencas.forEach((entry) => {
           if (!Number.isFinite(Number(entry.funcID))) return;
           deduped.set(Number(entry.funcID), Boolean(entry.presente));
         });
 
-        await tx.$executeRaw`
-          DELETE FROM "funcionario_presenca_diaria"
-          WHERE "restID" = ${restID}
-            AND "data" = ${dataFormatada}
-        `;
-
+        // Upsert only the employees in the payload; rows of anyone else survive.
         for (const [funcID, presente] of deduped.entries()) {
           await tx.$executeRaw`
             INSERT INTO "funcionario_presenca_diaria"
               ("restID", "data", "funcID", "presente", "criadoEm", "atualizadoEm")
             VALUES
               (${restID}, ${dataFormatada}, ${funcID}, ${presente}, NOW(), NOW())
+            ON CONFLICT ("restID", "data", "funcID")
+            DO UPDATE SET "presente" = EXCLUDED."presente", "atualizadoEm" = NOW()
           `;
         }
       }
@@ -892,7 +887,7 @@ export class FaturamentoDiarioService {
         data: dataFormatada,
         faturamento_global: dto.faturamento_global,
         valor_total_gorjetas: dto.valor_total_gorjetas,
-        staff_count: (dto.staff || []).length,
+        staff_count: staff.length,
       },
       ipAddress: context?.ipAddress,
       userAgent: context?.userAgent,

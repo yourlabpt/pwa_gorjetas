@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { FuncionariosService } from '../funcionarios/funcionarios.service';
 import { PayoutCalculatorService } from '../payout-calculator/payout-calculator.service';
 import {
   CalculationBase,
@@ -22,6 +23,7 @@ export class FinanceEngineService {
   constructor(
     private prisma: PrismaService,
     private payoutCalculator: PayoutCalculatorService,
+    private funcionariosService: FuncionariosService,
   ) {}
 
   async computeDailyPayouts(
@@ -29,15 +31,16 @@ export class FinanceEngineService {
     input: DayInput,
     options: FinanceEngineComputeOptions = {},
   ): Promise<DailyFinanceComputation> {
-    const funcionarios = await this.prisma.funcionario.findMany({
-      where: { restID, ativo: true },
-      select: {
-        funcID: true,
-        name: true,
-        funcao: true,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    // Participants of the day being computed: employees active on that day
+    // plus anyone already stored in that day's rows. Never the current flag.
+    const funcionarios = await this.funcionariosService.findForDay(
+      restID,
+      options.data ?? new Date(),
+    );
+    const participantes = new Set(funcionarios.map((f) => f.funcID));
+    const staffInputs = (options.staff_inputs || []).filter((entry) =>
+      participantes.has(Number(entry.funcID)),
+    );
 
     const regras = await this.prisma.regraDistribuicao.findMany({
       where: { restID, ativo: true },
@@ -76,13 +79,13 @@ export class FinanceEngineService {
     }
 
     const staffPoolInputByFuncID = new Map<number, number>(
-      (options.staff_inputs || []).map((entry) => [
+      staffInputs.map((entry) => [
         Number(entry.funcID),
         this.round2(Math.max(Number(entry.valor_pool || 0), 0)),
       ]),
     );
     const directInputByFuncID = new Map<number, number>(
-      (options.staff_inputs || []).map((entry) => [
+      staffInputs.map((entry) => [
         Number(entry.funcID),
         this.round2(Math.max(Number(entry.valor_direto || 0), 0)),
       ]),

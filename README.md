@@ -1,6 +1,34 @@
 # pwa_gorjetas
 Aplicação para gestão de faturamento diário e distribuição de gorjetas.
 
+## ⛔ REGRA N.º 1 — NUNCA APAGAR A BASE DE DADOS
+**NEVER RUN, SUGGEST OR SCRIPT ANY COMMAND THAT DELETES THE DATABASE OR ITS DATA.**
+
+Esta aplicação guarda dados financeiros reais de clientes. Nenhum deploy, atualização, correção ou "reset" pode apagar dados. Não existe exceção para "é só o ambiente de teste" quando o comando é executado no servidor.
+
+**Proibido, sempre (em produção e no servidor):**
+
+| Comando | Porque é proibido |
+|---|---|
+| `docker compose ... down -v` / `down --volumes` | Apaga o volume do Postgres. `docker-compose.yml` e `docker-compose.prod.yml` usam o **mesmo** volume (`pwa_gorjetas_postgres_data`) quando executados nesta pasta. |
+| `docker volume rm ...`, `docker volume prune`, `docker system prune --volumes` | Apaga volumes com dados. |
+| `npx prisma migrate reset` | Apaga e recria a base inteira. |
+| `npx prisma db push --accept-data-loss` / `--force-reset` | Apaga colunas/tabelas para acertar o schema. |
+| `DROP DATABASE`, `DROP SCHEMA`, `DROP TABLE`, `TRUNCATE`, `dropdb` | Apagam dados diretamente. |
+| `DELETE FROM <tabela>` sem `WHERE` específico, ou qualquer `DELETE`/`UPDATE` manual em produção | Perda ou corrupção de dados financeiros. |
+| Apagar ficheiros em `backups/` ou a pasta de dados do Postgres | Remove a única forma de recuperação. |
+| `./setup.sh` no servidor de produção | É um script **só para desenvolvimento local**. |
+
+**Migrações:** só são aceites migrações **aditivas** (criar tabela, criar coluna opcional, criar índice). Qualquer migração com `DROP`, `DELETE`, `TRUNCATE`, remoção/renomeação de coluna ou mudança de tipo precisa de aprovação explícita do responsável, backup feito antes e ensaio numa cópia restaurada (ver abaixo). O container aplica migrações pendentes no arranque (`prisma migrate deploy`), por isso uma migração destrutiva no repositório é executada automaticamente no próximo deploy.
+
+**Rollback:** faz-se voltando a publicar a versão anterior do código. Tabelas ou colunas novas ficam na base (a versão anterior ignora-as). Nunca se faz rollback apagando tabelas.
+
+**Restaurar um backup** (`./db-backup-restore.sh restore`) substitui os dados atuais. Só em recuperação de desastre, com aprovação explícita do responsável. O script tira automaticamente um backup dos dados atuais antes de restaurar e aborta se esse backup falhar.
+
+**Deploy seguro:** use sempre o procedimento [Sandbox + deploy na DigitalOcean](docs/procedures/SANDBOX_AND_DEPLOY.md) (`scripts/sandbox-test.sh`, tag git, `scripts/deploy-remote.sh`). Ele faz, por esta ordem: teste na sandbox com cópia da produção, backup verificado, bloqueio de migrações destrutivas, deploy, verificação de saúde e de contagens, e rollback automático do código se a nova versão não arrancar.
+
+Qualquer pessoa ou ferramenta (incluindo assistentes de IA) que proponha um dos comandos proibidos está errada: pare e peça confirmação ao responsável.
+
 ## Documentação
 
 A documentação está organizada por tipo em [docs/README.md](docs/README.md).
@@ -59,7 +87,13 @@ Observação:
 - Com Named Tunnel, o endpoint fica estável e sem rotação automática de URL.
 
 ### 3) Deploy de atualização (nova versão do código)
-Sem apagar dados do banco:
+Forma normal: [Sandbox + deploy na DigitalOcean](docs/procedures/SANDBOX_AND_DEPLOY.md).
+
+Só em último caso, manualmente no servidor, sem apagar dados (**REGRA N.º 1**). Primeiro, sempre, o backup:
+```bash
+./db-backup-restore.sh backup
+```
+Depois (note: `down` **sem** `-v`):
 
 Sem tunnel:
 ```bash
@@ -81,18 +115,15 @@ sudo docker compose --env-file .env.production -f docker-compose.prod.yml -f doc
 #### Ambiente já em produção (volume existente)
 Trocar `POSTGRES_PASSWORD` no `.env.production` sozinho não altera a senha dentro do banco já criado.
 
-Você tem 2 opções:
-1. Preservar dados e alterar a senha dentro do banco:
+Altere a senha dentro do banco, preservando os dados:
 ```bash
 sudo docker compose --env-file .env.production -f docker-compose.prod.yml exec db psql -U <usuario> -d <database>
 # no prompt do psql:
 ALTER USER <usuario> WITH PASSWORD '<nova_senha>';
 ```
-2. Recriar banco do zero (apaga dados):
-```bash
-sudo docker compose --env-file .env.production -f docker-compose.prod.yml down -v
-sudo docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
-```
+Depois atualize `POSTGRES_PASSWORD` no `.env.production` com o mesmo valor.
+
+⛔ Nunca recrie o banco do zero para trocar a senha (`down -v` apaga todos os dados). Ver **REGRA N.º 1**.
 
 ### 5) SUPER_ADMIN (bootstrap)
 - No startup, a API sincroniza automaticamente o `SUPER_ADMIN` usando:
