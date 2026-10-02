@@ -134,3 +134,43 @@ Depois atualize `POSTGRES_PASSWORD` no `.env.production` com o mesmo valor.
 
 ### 6) Backup automático diário
 Veja a configuração pronta de cron em [docs/BACKUP_CRONJOB.md](docs/BACKUP_CRONJOB.md) para executar backup à meia-noite e manter apenas os últimos 30 dias.
+
+### 7) Migração para outro servidor (restore a partir de backup)
+
+Use quando está a mover a app para um servidor novo e quer restaurar o banco a partir de um ficheiro `.dump`. Aceita paragem planeado — não precisa de manter o servidor antigo online durante a migração.
+
+**Guia completo (com explicação de cada passo):** [docs/procedures/SERVER_MIGRATION.md](docs/procedures/SERVER_MIGRATION.md)
+
+Resumo:
+
+```bash
+cd /path/to/pwa_gorjetas
+COMPOSE="sudo docker compose --env-file .env.production -f docker-compose.prod.yml -f docker-compose.tunnel.yml"
+source <(grep -E '^POSTGRES_' .env.production | sed 's/^/export /')
+
+# 1) Volume fresco (apaga estado corrompido; dados vêm do backup)
+$COMPOSE down -v
+
+# 2) Só Postgres
+$COMPOSE up -d db && sleep 20
+
+# 3) Restore
+sudo docker exec -i $(sudo docker ps -qf "name=db") pg_restore \
+  -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --no-privileges \
+  < backups/backup_YYYY-MM-DD_HH-MM-SS.dump
+
+# 4) Permissões + senha (ver guia completo para os comandos SQL)
+
+# 5) Stack completa
+$COMPOSE up -d --build
+$COMPOSE logs -f app
+```
+
+**No servidor antigo, antes de migrar:** `./db-backup-restore.sh backup` e depois `docker compose down`.
+
+**Verificar dados após restore** (a tabela Prisma `User` chama-se `users` na base de dados):
+
+```bash
+sudo docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" $(sudo docker ps -qf "name=db") \
+  psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT COUNT(*) FROM users;"
+```
