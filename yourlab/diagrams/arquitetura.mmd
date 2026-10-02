@@ -1,0 +1,36 @@
+%% title: Arquitetura atual e módulos novos
+flowchart LR
+  subgraph Utilizadores
+    G[Gerente]
+    E[Escritório]
+    D[Donos]
+  end
+  subgraph Droplet["Droplet DigitalOcean (produção)"]
+    C[Caddy / túnel Cloudflare]
+    subgraph App["Contentor app"]
+      FE[Next.js frontend]
+      subgraph BE["NestJS backend"]
+        X1[auth, utilizadores, auditoria]
+        X2[funcionários, restaurantes, regras]
+        X3[faturação diária e gorjetas]
+        X4[fecho financeiro]
+        X5[acerto final]
+        N1[despesas-caixa · novo]
+        N2[fornecedores e faturas · novo]
+        N3[valores mensais e folha · novo]
+        N4[painel · novo]
+      end
+    end
+    DB[(Postgres 16)]
+    BK[backup diário]
+  end
+  T[Ambiente de testes · novo]
+  S[(Spaces: cópia dos backups · novo)]
+  M[Monitor, alertas e erros · novo]
+  G --> C
+  E --> C
+  D --> C
+  C --> FE --> BE --> DB
+  DB --> BK --> S
+  M -. vigia .-> C
+  M -. ping .-> BK

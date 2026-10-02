@@ -1,0 +1,15 @@
+%% title: Da folha de cálculo para a app
+flowchart LR
+  F1[FECHOS] --> A1[Fecho diário · caixa]
+  F2[FECHOS · especificação das despesas] --> A2[Fecho diário · despesas em dinheiro]
+  F3[FATURAS] --> A3[Faturas]
+  F4[LIST. PAG. FORNECEDORES] --> A4[Fornecedores · lista de pagamentos]
+  F5[Funcionários] --> A5[Pessoal · folha do mês]
+  F6[CONTROLE COM GRÁFICO] --> A6[Painel da casa]
+  F7[PORCENTAGENS ANO] --> A7[Anual]
+  A1 --> A6
+  A2 --> A6
+  A3 --> A6
+  A5 --> A6
+  A6 --> A8[Comparativo de casas]
+  A6 --> A7

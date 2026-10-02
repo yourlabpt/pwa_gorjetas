@@ -1,0 +1,16 @@
+%% title: Modelo de dados (tabelas novas e ligações)
+erDiagram
+  RESTAURANTE ||--o{ FATURAMENTO_DIARIO : tem
+  RESTAURANTE ||--o{ FECHO_FINANCEIRO : tem
+  RESTAURANTE ||--o{ DESPESA_CAIXA : tem
+  RESTAURANTE ||--o{ FATURA_FORNECEDOR : tem
+  RESTAURANTE ||--o{ VALOR_MENSAL : tem
+  RESTAURANTE ||--o{ FOLHA_MENSAL_LINHA : tem
+  FUNCIONARIO ||--o{ FUNCIONARIO_PERIODO_ATIVO : tem
+  FUNCIONARIO ||--o{ FATURAMENTO_DIARIO_DISTRIBUICAO : recebe
+  FUNCIONARIO ||--o{ DESPESA_CAIXA : "extras e feriados"
+  FUNCIONARIO ||--o{ FOLHA_MENSAL_LINHA : tem
+  FORNECEDOR ||--o{ FATURA_FORNECEDOR : emite
+  FORNECEDOR ||--o{ DESPESA_CAIXA : "pago em dinheiro"
+  FATURA_FORNECEDOR |o--o{ DESPESA_CAIXA : "liga para não contar duas vezes"
+  FECHO_FINANCEIRO ||--o{ FECHO_FINANCEIRO_ITEM : "linhas antigas"
