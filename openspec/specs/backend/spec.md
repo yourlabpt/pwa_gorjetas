@@ -261,6 +261,6 @@ Os ecrãs financeiros novos SHALL aparecer só nas casas com `modulo_financeiro_
 Cada release SHALL passar por `scripts/sandbox-test.sh` numa base nova e vazia, com tag `release-AAAA-MM-DD-N` em `main` e publicação por `scripts/deploy-remote.sh`. O CI SHALL correr os testes do backend em cada push.
 
 ### Requirement: Primeiro requisito
-<!-- yourlab: id=UQ-037; type=undefined; priority=high; module=Backend -->
+<!-- yourlab: id=UQ-001; type=undefined; priority=high; module=Backend -->
 
 O sistema SHALL ….
