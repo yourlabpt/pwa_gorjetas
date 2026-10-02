@@ -70,6 +70,12 @@ scripts/lib/check-migrations.sh "$BASE_REF" || fail "migration guard"
 # ---------------------------------------------------------------- 3. unit tests
 step "3/8 Backend unit tests"
 ( cd backend && { [ -d node_modules ] || npm ci; } && npm test --silent ) || fail "backend unit tests"
+# Frontend date logic (day/period navigation). Needs Node 22.6+ to run TypeScript directly.
+if [ "$(node -p 'process.versions.node.split(".")[0]')" -ge 23 ]; then
+  node frontend/src/lib/dates.check.ts 2>/dev/null || fail "frontend date checks"
+else
+  echo "⚠️  Node < 23: skipped frontend/src/lib/dates.check.ts"
+fi
 
 # ---------------------------------------------------------------- 4. backup
 step "4/8 Production backup to test with"

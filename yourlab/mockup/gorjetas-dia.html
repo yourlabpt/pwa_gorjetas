@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="pt-PT"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gorjetas do dia · Mock-up Grupo Ferreira</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;background:#f9fafb;color:#111827;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+a{color:#2563eb;text-decoration:none}
+h1{font-size:26px;color:#2c3e50;line-height:1.2}
+h2{font-size:17px;color:#2c3e50}
+.hiddenToggle{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
+.num,.table td,.table th{font-variant-numeric:tabular-nums}
+.mockbar{position:sticky;top:0;z-index:1100;display:flex;justify-content:space-between;align-items:center;gap:6px 12px;flex-wrap:wrap;background:#4c1d95;color:#ede9fe;font-size:12px;padding:6px 16px;min-height:30px}
+.mockbar a{color:#fff;font-weight:600}
+.mbRight{display:flex;gap:16px;align-items:center}
+.annSwitch{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:#fff;font-weight:600}
+.annSwitch i{width:28px;height:16px;border-radius:999px;background:#a78bfa;position:relative}
+.annSwitch i::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:left .15s}
+.annToggle:checked~.mockbar .annSwitch i{background:#22c55e}
+.annToggle:checked~.mockbar .annSwitch i::after{left:14px}
+.annToggle:not(:checked)~* .callout,.annToggle:not(:checked)~* .ann,.annToggle:not(:checked)~* .dot{display:none!important}
+.callout{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#7c3aed;color:#fff;font-size:11px;font-weight:700;vertical-align:middle;margin:0 4px;box-shadow:0 0 0 2px #ede9fe;font-style:normal;line-height:1}
+.ann.changes{background:#f5f3ff;border:1px dashed #a78bfa;border-radius:12px;padding:12px 16px;margin-bottom:18px;color:#3b0764}
+.ann.changes summary{font-weight:700;cursor:pointer}
+.ann.changes ul{margin:8px 0 0 18px;display:grid;gap:4px}
+.ann.notes{margin-top:24px;background:#f5f3ff;border:1px dashed #a78bfa;border-radius:12px;padding:16px;color:#3b0764}
+.ann.notes h2{color:#4c1d95;margin-bottom:10px}
+.noteList{list-style:none;display:grid;gap:8px}
+.noteList li{display:flex;gap:8px;align-items:flex-start}
+.noteList .callout{margin:0;flex:0 0 auto}
+small.ann,p.ann{display:block;color:#6d28d9;font-size:12px;margin-top:6px}
+.shell{display:grid;grid-template-columns:272px minmax(0,1fr);min-height:calc(100vh - 30px)}
+.sidebar{position:sticky;top:30px;height:calc(100vh - 30px);background:#fff;border-right:1px solid #e5e7eb;display:flex;flex-direction:column;z-index:1000}
+.brand{display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:700;font-size:16px}
+.casaSel{padding:12px 14px;border-bottom:1px solid #e5e7eb;display:grid;gap:6px}
+.casaSel>span{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;font-weight:600}
+.navScroll{flex:1;overflow-y:auto;padding:8px 10px}
+.navScroll ul{list-style:none;display:grid;gap:2px}
+.navGroup{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;font-weight:700;margin:14px 6px 4px}
+.navLink{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-radius:8px;border-left:3px solid transparent;color:#374151;font-weight:500}
+.navLink:hover{background:#f9fafb;border-left-color:#d1d5db;color:#111827}
+.navLink.active{background:#eff6ff;border-left-color:#2563eb;color:#1d4ed8;font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dot-new{background:#2563eb}.dot-chg{background:#f59e0b}
+.account{border-top:1px solid #e5e7eb;padding:12px 14px;display:flex;align-items:center;gap:10px}
+.avatar{width:32px;height:32px;border-radius:50%;background:#dbeafe;color:#1d4ed8;display:grid;place-items:center;font-weight:700;flex:0 0 auto}
+.acc{display:grid;flex:1;min-width:0}.acc b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.acc small{color:#6b7280;font-size:11px}
+.sair{border-radius:999px;padding:4px 10px;background:#111827;color:#fff;font-size:12px}
+.main{min-width:0}
+.mobilebar,.overlay{display:none}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.pageHeader{display:flex;justify-content:space-between;gap:16px 24px;align-items:flex-start;margin-bottom:18px;flex-wrap:wrap}
+.kicker{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;text-transform:uppercase;font-size:12px;letter-spacing:.08em;color:#6b7280}
+.subtitle{margin-top:6px;color:#55606d;max-width:720px}
+.headActions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:2px 8px;justify-self:start}
+.b-new{background:#dbeafe;color:#1d4ed8}.b-chg{background:#fef3c7;color:#92400e}.b-same{background:#f3f4f6;color:#6b7280}
+.auto{display:inline-block;font-size:11px;font-weight:600;color:#0f766e;background:#ccfbf1;border-radius:6px;padding:1px 6px;margin-left:4px;white-space:nowrap;text-transform:none;letter-spacing:0}
+.tag{display:inline-block;font-size:11px;font-weight:600;border-radius:6px;padding:2px 7px;white-space:nowrap}
+.tag-forn{background:#dbeafe;color:#1e40af}.tag-extra{background:#fef3c7;color:#92400e}.tag-fer{background:#fce7f3;color:#9d174d}.tag-out{background:#f3f4f6;color:#374151}.tag-nc{background:#fee2e2;color:#991b1b}.tag-fat{background:#f3f4f6;color:#374151}
+.st{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.st-ok{background:#dcfce7;color:#166534}.st-warn{background:#fef3c7;color:#92400e}.st-crit{background:#fee2e2;color:#991b1b}.st-info{background:#e0f2fe;color:#075985}
+.btn,.btnPrimary,.btnGhost,.btnDanger{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:10px;padding:9px 14px;font-weight:600;font-size:14px;border:1px solid transparent;cursor:pointer;white-space:nowrap}
+.btnPrimary{background:#2563eb;color:#fff}.btnPrimary:hover{background:#1d4ed8}
+.btn{background:#111827;color:#fff}.btn:hover{background:#000}
+.btnGhost{background:#fff;color:#111827;border-color:#d1d5db}.btnGhost:hover{border-color:#2563eb;color:#2563eb}
+.btnDanger{background:#fff;color:#b91c1c;border-color:#fecaca}.btnDanger:hover{background:#fef2f2}
+.btnSm{padding:5px 10px;font-size:12px;border-radius:8px}
+input[type=text],input[type=date],select,textarea{width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:8px;font:inherit;background:#fff;color:#111827;min-width:0}
+input[readonly]{background:#f9fafb;color:#374151}
+input:focus,select:focus,textarea:focus{outline:2px solid #93c5fd;border-color:#2563eb}
+.field{display:grid;gap:5px;font-size:13px;align-content:start}
+.field>span{font-weight:600;color:#374151}
+.field small{color:#6b7280;font-size:12px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip{display:inline-block;border:1px solid #d1d5db;background:#fff;color:#374151;border-radius:999px;padding:6px 12px;font-weight:600;font-size:13px}
+.chip:hover{border-color:#2563eb;color:#2563eb}
+.chip.on{background:#dbeafe;border-color:#2563eb;color:#1d4ed8}
+.filters{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px}
+.filters>.field{min-width:170px}
+.section{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px;margin-bottom:18px;box-shadow:0 4px 14px rgba(15,23,42,.04);min-width:0}
+.sectionHead{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.sectionActions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:18px}
+.kpi{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;box-shadow:0 3px 10px rgba(15,23,42,.05);display:grid;gap:4px;align-content:start;color:#111827}
+a.kpi:hover{border-color:#2563eb}
+.kpiLabel{font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.kpiValue{font-size:24px;color:#111827;font-weight:700;line-height:1.2}
+.kpiSub{font-size:13px;color:#55606d}
+.kpi.crit{border-color:#fecaca;background:#fffafa}
+.up{color:#006300;font-weight:700}.down{color:#b91c1c;font-weight:700}
+.up,.down{white-space:nowrap}
+.chart.h{max-width:680px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:18px;margin-bottom:18px}
+.grid2>.section{margin-bottom:0}
+.alerts{display:grid;gap:8px;margin-bottom:18px}
+.alert{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;border-radius:10px;padding:10px 14px;font-weight:500;border:1px solid}
+.alert-crit{background:#fef2f2;border-color:#fecaca;color:#7f1d1d}.alert-warn{background:#fffbeb;border-color:#fde68a;color:#78350f}.alert-info{background:#f0f9ff;border-color:#bae6fd;color:#0c4a6e}
+.tableWrap{overflow-x:auto;border:1px solid #e5e7eb;border-radius:10px;max-width:100%}
+.table{width:100%;border-collapse:collapse;font-size:13px}
+.table th{text-align:left;font-size:12px;color:#6b7280;background:#f9fafb;padding:9px 10px;font-weight:600;white-space:nowrap;border-bottom:1px solid #e5e7eb}
+.table td{padding:9px 10px;border-top:1px solid #f1f5f9;vertical-align:middle}
+.table tbody tr:hover td{background:#f8fafc}
+.table tfoot td{background:#f9fafb;font-weight:700;border-top:2px solid #e5e7eb}
+.table .r{text-align:right}
+.table input[type=text]{padding:5px 8px;min-width:90px;text-align:right}
+.muted{color:#6b7280}
+.small{font-size:12px}
+.more{display:none}
+.revealTarget:target .more{display:table-row-group}
+.revealTarget:target .revealBtn{display:none}
+.pagerBar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.pagerBtn{background:#fff;color:#111827;border:1px solid #d1d5db;border-radius:10px;padding:9px 14px;font-weight:600;white-space:nowrap}
+.pagerBtn:hover{border-color:#2563eb;color:#2563eb}
+.pagerTitle{flex:1;min-width:180px;text-align:center;font-size:17px;font-weight:700}
+.pagerBar input[type=date],.pagerBar select{width:auto}
+.dayStrip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.dayChip{display:grid;gap:2px;justify-items:center;border:1px solid transparent;border-radius:10px;padding:6px 4px;font-size:12px;font-weight:600}
+.dayChip b{font-size:15px}
+.dc-saved{background:#dcfce7;color:#166534;border-color:#bbf7d0}.dc-draft{background:#fef3c7;color:#b45309;border-color:#fcd34d}.dc-missing{background:#fee2e2;color:#991b1b;border-color:#fecaca}
+.dc-sel{outline:2px solid #2563eb;outline-offset:1px}
+.legend{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:12px;color:#55606d;margin-top:8px;align-items:center}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid #e5e7eb;margin:18px 0;align-items:center}
+.tab{padding:10px 16px;font-weight:600;color:#6b7280;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab:hover{color:#111827}
+.tab.on{color:#1d4ed8;border-bottom-color:#2563eb}
+.matrix th,.matrix td{text-align:center;padding:6px 5px;min-width:54px}
+.matrix th:first-child,.matrix td:first-child{position:sticky;left:0;background:#fff;text-align:left;min-width:160px;z-index:1;box-shadow:1px 0 0 #e5e7eb}
+.matrix thead th:first-child,.matrix tfoot td:first-child{background:#f9fafb}
+.matrix .dh{display:grid;gap:1px;justify-items:center}
+.matrix .dh small{font-weight:600;color:#991b1b}
+.matrix a.cell{display:block;color:#111827;border-radius:6px;padding:3px 0}
+.matrix a.cell:hover{background:#dbeafe}
+.m-off{color:#9ca3af;background:#f9fafb;font-size:11px}
+.m-miss,.table tbody tr:hover td.m-miss{background:#fee2e2;color:#991b1b;font-weight:700}
+.m-miss a.cell{color:#991b1b}
+.m-na{background:repeating-linear-gradient(45deg,#f9fafb,#f9fafb 4px,#eceff3 4px,#eceff3 8px)}
+tr.m-miss td{background:#fef2f2}
+.formula{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:15px}
+.formula .term{display:grid;gap:2px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:8px 12px}
+.formula .term small{font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.formula .op{font-size:20px;color:#6b7280;font-weight:700}
+.formula .res{background:#ecfdf5;border-color:#a7f3d0}
+.formula .res b{font-size:22px;color:#065f46}
+.excluded{margin-top:12px;font-size:13px;color:#55606d;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.excluded s{color:#9ca3af}
+.chart{width:100%;height:auto;display:block}
+.chart .grid{stroke:#e1e0d9;stroke-width:1}
+.chart .axis{stroke:#c3c2b7;stroke-width:1}
+.chart .tick{fill:#898781;font-size:11px}
+.chart .dl{fill:#52514e;font-size:11px;font-weight:600}
+.chart .ref{stroke:#52514e;stroke-width:1.5;stroke-dasharray:5 4}
+.chart .refLabel{fill:#52514e;font-size:11px;font-weight:600}
+.chart path:hover{opacity:.8}
+.meter{position:relative;height:10px;border-radius:999px;background:#eef2f7;min-width:110px}
+.meter span{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:#2a78d6}
+.meter i{position:absolute;top:-4px;bottom:-4px;width:2px;background:#111827}
+.keys{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#52514e;margin-bottom:6px}
+.keys i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.keys i.dash{width:16px;height:0;border-top:2px dashed #52514e;border-radius:0;vertical-align:3px}
+.pl td{padding:8px 10px}
+.pl td:first-child{min-width:220px}
+.pl td:nth-child(4){min-width:140px}
+.pl .sub td{color:#55606d}
+.pl .sub td:first-child{padding-left:28px}
+.pl .tot td{font-weight:700;background:#f9fafb}
+.pl .res td{font-weight:800;font-size:15px;background:#ecfdf5;color:#065f46}
+.modal{display:none;position:fixed;inset:0;z-index:2000;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow-y:auto;background:rgba(17,24,39,.5)}
+.modal:target{display:flex}
+.modalBg{position:fixed;inset:0}
+.modalCard{position:relative;background:#fff;border-radius:14px;width:min(580px,100%);box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.modalHead{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid #e5e7eb}
+.modalHead .x{color:#6b7280;font-size:18px}
+.modalBody{padding:18px;display:grid;gap:14px}
+.modalFoot{padding:14px 18px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.radioChips{display:flex;gap:6px;flex-wrap:wrap}
+.radioChips label{border:1px solid #d1d5db;border-radius:999px;padding:6px 12px;font-weight:600;font-size:13px;cursor:pointer}
+.radioChips label:hover{border-color:#2563eb}
+.catF:checked~.field .radioChips label[for=catF],.catE:checked~.field .radioChips label[for=catE],.catH:checked~.field .radioChips label[for=catH],.catO:checked~.field .radioChips label[for=catO],.tipoF:checked~.field .radioChips label[for=tipoF],.tipoN:checked~.field .radioChips label[for=tipoN]{background:#dbeafe;border-color:#2563eb;color:#1d4ed8}
+.fFunc{display:none}
+.catE:checked~.fFunc,.catH:checked~.fFunc{display:grid}
+.catE:checked~.fForn,.catH:checked~.fForn,.catO:checked~.fForn,.catE:checked~.fFat,.catH:checked~.fFat,.catO:checked~.fFat{display:none}
+.warnBox,.critBox,.okBox{border-radius:10px;padding:10px 12px;font-size:13px;border:1px solid}
+.warnBox{background:#fffbeb;border-color:#fde68a;color:#78350f}
+.critBox{background:#fef2f2;border-color:#fecaca;color:#7f1d1d}
+.checklist{list-style:none;display:grid;gap:8px}
+.mapGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.screen{display:grid;gap:6px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;color:#111827;box-shadow:0 3px 10px rgba(15,23,42,.05);align-content:start}
+.screen:hover{border-color:#2563eb;box-shadow:0 6px 18px rgba(37,99,235,.12)}
+.screen b{font-size:15px}
+.screen span:last-child{color:#55606d;font-size:13px}
+.flow{display:flex;gap:8px;flex-wrap:wrap;align-items:stretch}
+.flow .step{flex:1 1 150px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:12px;display:grid;gap:4px;color:#111827;align-content:start}
+.flow .step:hover{border-color:#2563eb}
+.flow .step small{color:#6b7280}
+.flow .arrow{align-self:center;color:#9ca3af;font-size:20px}
+.loginWrap{min-height:calc(100vh - 30px);display:grid;place-items:center;padding:24px 16px}
+.loginCard{width:min(380px,100%);background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:28px;display:grid;gap:16px;box-shadow:0 10px 30px rgba(15,23,42,.08)}
+@media (max-width:768px){
+  .shell{display:block}
+  .sidebar{position:fixed;top:0;left:0;bottom:0;height:100vh;width:272px;transform:translateX(-100%);transition:transform .2s}
+  .navToggle:checked~.shell .sidebar{transform:none}
+  .navToggle:checked~.shell .overlay{display:block;position:fixed;inset:0;background:rgba(17,24,39,.4);z-index:999}
+  .mobilebar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff;border-bottom:1px solid #e5e7eb;position:sticky;top:30px;z-index:900}
+  .hamb{font-size:18px;cursor:pointer;padding:2px 9px;border:1px solid #e5e7eb;border-radius:8px}
+  .container{padding:16px}
+  h1{font-size:22px}
+  .kpiValue{font-size:20px}
+  .dayChip span{display:none}
+  .pagerTitle{order:-1;flex-basis:100%}
+  .flow .arrow{display:none}
+}
+@media print{.mockbar,.sidebar,.ann,.callout,.headActions{display:none!important}.shell{display:block}}
+</style></head>
+<body>
+<input type="checkbox" id="ann" class="hiddenToggle annToggle" checked aria-label="Mostrar anotações">
+<input type="checkbox" id="nav" class="hiddenToggle navToggle" aria-label="Abrir menu">
+<div class="mockbar"><span><b>MOCK-UP</b> · Gestão financeira Grupo Ferreira · v1 · 2 out 2026</span><span class="mbRight"><a href="index.html">← Mapa do mock-up</a><label for="ann" class="annSwitch"><i></i>Mostrar anotações</label></span></div>
+<div class="shell">
+<nav class="sidebar" aria-label="Menu principal">
+  <a href="inicio.html" class="brand"><svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#111827"/><path d="M10 23V9h11M10 16h8" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/><circle cx="23" cy="22" r="2.4" fill="#2a78d6"/></svg><span>Grupo Ferreira</span></a>
+  <div class="casaSel"><span>Casa <b class="callout" title="Ver interação C">C</b></span><select><option selected>Ferrary</option><option>Casa Ribeira</option><option>Casa Alfama</option><option>Casa Chiado</option><option>Casa Baixa</option><option>Casa Belém</option></select><small class="ann">Uma escolha vale para todas as páginas (hoje cada página tem a sua).</small></div>
+  <div class="navScroll"><ul><li><a href="inicio.html" class="navLink">Início<i class="dot dot-chg" title="Alterado"></i></a></li></ul><p class="navGroup">Operação</p><ul><li><a href="fecho-diario.html" class="navLink active">Fecho diário<i class="dot dot-chg" title="Alterado"></i></a></li><li><a href="acerto-final.html" class="navLink">Acerto de gorjetas<i class="dot dot-chg" title="Alterado"></i></a></li></ul><p class="navGroup">Financeiro · donos</p><ul><li><a href="painel.html" class="navLink">Painel<i class="dot dot-new" title="Novo"></i></a></li><li><a href="faturas.html" class="navLink">Faturas<i class="dot dot-new" title="Novo"></i></a></li><li><a href="fornecedores.html" class="navLink">Fornecedores<i class="dot dot-new" title="Novo"></i></a></li><li><a href="pessoal.html" class="navLink">Pessoal<i class="dot dot-new" title="Novo"></i></a></li><li><a href="custos-mensais.html" class="navLink">Custos do mês<i class="dot dot-new" title="Novo"></i></a></li><li><a href="comparativo.html" class="navLink">Comparativo<i class="dot dot-new" title="Novo"></i></a></li><li><a href="anual.html" class="navLink">Anual<i class="dot dot-new" title="Novo"></i></a></li></ul><p class="navGroup">Gorjetas</p><ul><li><a href="relatorios.html" class="navLink">Relatórios</a></li><li><a href="regras.html" class="navLink">Regras de distribuição</a></li></ul><p class="navGroup">Administração</p><ul><li><a href="funcionarios.html" class="navLink">Funcionários<i class="dot dot-chg" title="Alterado"></i></a></li><li><a href="restaurantes.html" class="navLink">Restaurantes<i class="dot dot-chg" title="Alterado"></i></a></li><li><a href="utilizadores.html" class="navLink">Utilizadores<i class="dot dot-chg" title="Alterado"></i></a></li><li><a href="auditoria.html" class="navLink">Auditoria<i class="dot dot-chg" title="Alterado"></i></a></li></ul></div>
+  <div class="account"><span class="avatar">P</span><span class="acc"><b>proprietario@grupoferreira.pt</b><small>Administrador</small></span><a href="login.html" class="sair">Sair</a></div>
+</nav>
+<label for="nav" class="overlay" aria-hidden="true"></label>
+<main class="main">
+<div class="mobilebar"><label for="nav" class="hamb" aria-label="Abrir menu">☰</label><svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#111827"/><path d="M10 23V9h11M10 16h8" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/><circle cx="23" cy="22" r="2.4" fill="#2a78d6"/></svg><b>Grupo Ferreira</b></div>
+<div class="container">
+<header class="pageHeader">
+  <div><p class="kicker">Operação · Fecho diário <span class="badge b-same">Sem alterações</span></p><h1>Gorjetas do dia</h1><p class="subtitle">A distribuição do dia, agora como separador do fecho diário.</p></div>
+  <div class="headActions"></div>
+</header>
+<details class="ann changes" open><summary>O que muda neste ecrã</summary><ul><li>O ecrã atual mantém-se; só passa a separador do Fecho diário.</li><li>Os valores diretos dos chamadores alimentam o campo “Chamadores” do fecho de caixa.</li></ul></details>
+<div class="pagerBar"><a class="pagerBtn" href="fecho-diario.html">‹ Anterior</a><a class="pagerBtn" href="fecho-diario.html">Hoje</a><div class="pagerTitle">Qui, 2 jul 2026 <b class="callout" title="Ver interação 1">1</b></div><a class="pagerBtn" href="fecho-diario.html">Seguinte ›</a><input type="date" value="2026-07-02" aria-label="Escolher dia"></div>
+<div class="chips" style="margin-bottom:8px"><a class="pagerBtn btnSm" href="fecho-diario.html" aria-label="Semana anterior">«</a><span class="muted small">Semana 29 jun – 5 jul</span><a class="pagerBtn btnSm" href="fecho-diario.html" aria-label="Semana seguinte">»</a><b class="callout" title="Ver interação 2">2</b></div>
+<div class="dayStrip"><a class="dayChip dc-saved" href="fecho-diario.html" title="seg, 29 jun"><small>seg</small><b>29</b><span>757 €</span></a><a class="dayChip dc-saved" href="fecho-diario.html" title="ter, 30 jun"><small>ter</small><b>30</b><span>757 €</span></a><a class="dayChip dc-saved" href="fecho-diario.html" title="qua, 1 jul"><small>qua</small><b>1</b><span>757 €</span></a><a class="dayChip dc-draft dc-sel" href="fecho-diario.html" title="qui, 2 jul"><small>qui</small><b>2</b><span>rascunho</span></a><a class="dayChip dc-saved" href="fecho-diario.html" title="sex, 3 jul"><small>sex</small><b>3</b><span>757 €</span></a><a class="dayChip dc-saved" href="fecho-diario.html" title="sáb, 4 jul"><small>sáb</small><b>4</b><span>757 €</span></a><a class="dayChip dc-saved" href="fecho-diario.html" title="dom, 5 jul"><small>dom</small><b>5</b><span>757 €</span></a></div>
+<div class="legend"><span><i style="background:#dcfce7"></i>Guardado</span><span><i style="background:#fef3c7"></i>Rascunho (não guardado)</span><span><i style="background:#fee2e2"></i>Em falta</span><span><i style="background:#fff;border:1px solid #e5e7eb"></i>Futuro</span></div>
+<nav class="tabs" aria-label="Separadores do dia"><a class="tab" href="fecho-diario.html">Fecho de caixa</a><a class="tab on" href="gorjetas-dia.html">Gorjetas do dia</a></nav>
+<div class="kpis"><div class="kpi "><span class="kpiLabel">Faturação global</span><strong class="kpiValue">7 088,49 €</strong></div><div class="kpi "><span class="kpiLabel">Base de gorjeta</span><strong class="kpiValue">11%</strong></div><div class="kpi "><span class="kpiLabel">Total gorjetas (pool)</span><strong class="kpiValue">756,84 €</strong></div><div class="kpi "><span class="kpiLabel">Faturação líquida</span><strong class="kpiValue">6 331,65 €</strong></div></div>
+<section class="section"><div class="sectionHead"><h2>Entradas do dia <b class="callout" title="Ver interação 1">1</b></h2><div class="sectionActions"><a class="btnGhost" href="gorjetas-dia.html">Recalcular com regras atuais</a></div></div><h3 style="margin:14px 0 8px;font-size:15px">Sala</h3><div class="tableWrap"><table class="table "><thead><tr><th scope="col">Funcionário</th><th scope="col">Função</th><th scope="col">Presente</th><th scope="col">Parte do pool</th><th scope="col">Direta</th><th scope="col">Desconto</th><th scope="col">Calculado</th><th scope="col">Efetivo</th></tr></thead><tbody><tr><td>Ana Costa</td><td>Empregado/a de mesa</td><td><input type="checkbox" checked aria-label="Presente"></td><td>5,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>38,81</td><td><b>38,81</b></td></tr><tr><td>Bruno Lima</td><td>Empregado/a de mesa</td><td><input type="checkbox" checked aria-label="Presente"></td><td>5,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>38,81</td><td><b>38,81</b></td></tr><tr><td>Carla Dias</td><td>Empregado/a de mesa</td><td><input type="checkbox" checked aria-label="Presente"></td><td>5,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>38,81</td><td><b>38,81</b></td></tr><tr><td>Diogo Reis</td><td>Empregado/a de mesa</td><td><input type="checkbox" checked aria-label="Presente"></td><td>5,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>38,81</td><td><b>38,81</b></td></tr><tr><td>Eva Matos</td><td>Empregado/a de mesa</td><td><input type="checkbox" checked aria-label="Presente"></td><td>5,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>38,81</td><td><b>38,81</b></td></tr><tr><td>Rui Mota</td><td>Empregado/a de mesa</td><td><input type="checkbox" checked aria-label="Presente"></td><td>5,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>38,81</td><td><b>38,81</b></td></tr><tr><td>Sofia Nunes</td><td>Empregado/a de mesa</td><td><input type="checkbox" aria-label="Presente"></td><td>—</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>—</td><td>folga</td></tr><tr><td>Tiago Faria</td><td>Empregado/a de mesa</td><td><input type="checkbox" checked aria-label="Presente"></td><td>5,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>38,81</td><td><b>38,81</b></td></tr><tr><td>Inês Pereira</td><td>Empregado/a de mesa</td><td><input type="checkbox" checked aria-label="Presente"></td><td>5,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>38,81</td><td><b>38,81</b></td></tr><tr><td>João Lopes</td><td>Empregado/a de mesa</td><td><input type="checkbox" checked aria-label="Presente"></td><td>5,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>38,81</td><td><b>38,81</b></td></tr><tr><td>Marta Silva</td><td>Empregado/a de mesa</td><td><input type="checkbox" checked aria-label="Presente"></td><td>5,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>38,81</td><td><b>38,81</b></td></tr><tr><td>Luís Ramos</td><td>Bar</td><td><input type="checkbox" checked aria-label="Presente"></td><td>5,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>38,81</td><td><b>38,81</b></td></tr><tr><td>Beatriz Moura</td><td>Bar</td><td><input type="checkbox" aria-label="Presente"></td><td>—</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>—</td><td>folga</td></tr><tr><td>Vasco Teixeira</td><td>Bar</td><td><input type="checkbox" checked aria-label="Presente"></td><td>5,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>38,81</td><td><b>38,81</b></td></tr></tbody></table></div><h3 style="margin:14px 0 8px;font-size:15px">Cozinha</h3><div class="tableWrap"><table class="table "><thead><tr><th scope="col">Funcionário</th><th scope="col">Função</th><th scope="col">Presente</th><th scope="col">Parte do pool</th><th scope="col">Direta</th><th scope="col">Desconto</th><th scope="col">Calculado</th><th scope="col">Efetivo</th></tr></thead><tbody><tr><td>Filipe Sá</td><td>Chefe de cozinha</td><td><input type="checkbox" checked aria-label="Presente"></td><td>4,6%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>34,93</td><td><b>34,93</b></td></tr><tr><td>Gina Rocha</td><td>Cozinheiro/a</td><td><input type="checkbox" checked aria-label="Presente"></td><td>3,6%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>27,17</td><td><b>27,17</b></td></tr><tr><td>Hélder Pinto</td><td>Cozinheiro/a</td><td><input type="checkbox" checked aria-label="Presente"></td><td>3,6%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>27,17</td><td><b>27,17</b></td></tr><tr><td>Joana Marques</td><td>Cozinheiro/a</td><td><input type="checkbox" checked aria-label="Presente"></td><td>3,6%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>27,17</td><td><b>27,17</b></td></tr><tr><td>Ricardo Fonseca</td><td>Cozinheiro/a</td><td><input type="checkbox" checked aria-label="Presente"></td><td>3,6%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>27,17</td><td><b>27,17</b></td></tr><tr><td>Daniela Cardoso</td><td>Ajudante de cozinha</td><td><input type="checkbox" aria-label="Presente"></td><td>—</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>—</td><td>folga</td></tr><tr><td>Fábio Correia</td><td>Ajudante de cozinha</td><td><input type="checkbox" checked aria-label="Presente"></td><td>3,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>23,29</td><td><b>23,29</b></td></tr><tr><td>Patrícia Barros</td><td>Ajudante de cozinha</td><td><input type="checkbox" checked aria-label="Presente"></td><td>3,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>23,29</td><td><b>23,29</b></td></tr><tr><td>Manuel Sousa</td><td>Copa</td><td><input type="checkbox" checked aria-label="Presente"></td><td>2,6%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>19,41</td><td><b>19,41</b></td></tr><tr><td>Rita Almeida</td><td>Copa</td><td><input type="checkbox" checked aria-label="Presente"></td><td>2,6%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>19,41</td><td><b>19,41</b></td></tr></tbody></table></div><h3 style="margin:14px 0 8px;font-size:15px">Gerência</h3><div class="tableWrap"><table class="table "><thead><tr><th scope="col">Funcionário</th><th scope="col">Função</th><th scope="col">Presente</th><th scope="col">Parte do pool</th><th scope="col">Direta</th><th scope="col">Desconto</th><th scope="col">Calculado</th><th scope="col">Efetivo</th></tr></thead><tbody><tr><td>Hugo Martins</td><td>Gerente</td><td><input type="checkbox" checked aria-label="Presente"></td><td>4,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>31,05</td><td><b>31,05</b></td></tr><tr><td>Cláudia Ribeiro</td><td>Subgerente</td><td><input type="checkbox" checked aria-label="Presente"></td><td>4,1%</td><td><span class="muted">0,00</span></td><td><span class="muted">0,00</span></td><td>31,06</td><td><b>31,06</b></td></tr></tbody></table></div></section>
+<section class="section"><div class="sectionHead"><h2>Chamadores <b class="callout" title="Ver interação 2">2</b></h2><div class="sectionActions"></div></div><div class="tableWrap"><table class="table "><thead><tr><th scope="col">Chamador</th><th scope="col">Valor direto</th><th scope="col">Efetivo</th></tr></thead><tbody><tr><td>Nuno Alves</td><td><input type="text" value="97,00" ></td><td><b>97,00</b></td></tr><tr><td>Paulo Cruz</td><td><input type="text" value="65,00" ></td><td><b>65,00</b></td></tr></tbody><tfoot><tr><td>Total</td><td></td><td>162,00</td></tr></tfoot></table></div></section>
+<div class="headActions" style="justify-content:flex-end;margin-bottom:18px"><a class="btnPrimary" href="gorjetas-dia.html">Guardar dia</a></div>
+<aside class="ann notes"><h2>Interações</h2><ol class="noteList"><li><b class="callout">1</b><span>Marcar ou desmarcar a presença recalcula as partes. “Recalcular com regras atuais” aplica as regras de distribuição em vigor.</span></li><li><b class="callout">2</b><span>O valor escrito para cada chamador soma-se no fecho de caixa e no painel (custo “Chamadores”).</span></li></ol></aside>
+</div></main></div>
+
+</body></html>

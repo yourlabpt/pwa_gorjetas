@@ -8,6 +8,8 @@ import ReadOnlyBanner from '../components/ReadOnlyBanner';
 import readOnlyStyles from '../components/ReadOnlyBanner.module.css';
 import styles from '../styles/financeiro-diario.module.css';
 import { useSessionPageState } from '../hooks/useSessionPageState';
+import { DayChip, DayLegend, DayStrip, PagerBar } from '../components/DayPager';
+import { addDays, formatDayPT, listDays, startOfWeek, todayLisbon } from '../lib/dates';
 
 interface Restaurante {
   restID: number;
@@ -221,7 +223,8 @@ const FORM_SESSION_PREFIX = 'fin-diario-form';
 const buildFormSessionKey = (restId: number, date: string) =>
   `${FORM_SESSION_PREFIX}:${restId}:${date}`;
 
-const TODAY = new Date().toISOString().split('T')[0];
+// Lisbon business day (the UTC date is still yesterday between 00:00 and 01:00 in summer).
+const TODAY = todayLisbon();
 
 export default function FinanceiroDiario() {
   const router = useRouter();
@@ -254,6 +257,11 @@ export default function FinanceiroDiario() {
   const loadCounterRef = useRef(0);
   const snapshotUpdatedAtRef = useRef<string | null>(null);
   const [formDirty, setFormDirty] = useState(false);
+  // Saved days of the visible week (date -> tip pool), for the day strip.
+  const [weekSaved, setWeekSaved] = useState<{ key: string; days: Record<string, number | null> } | null>(null);
+  const [weekReload, setWeekReload] = useState(0);
+  // Deep link (?restID=&data=) captured once, before the auth bootstrap picks a restaurant.
+  const deepLinkRef = useRef<{ restID: number | null; data: string | null } | null>(null);
 
   // ── Fecho Financeiro state ──────────────────────────────────────────────
   const [fechoData, setFechoData] = useState<FechoData | null>(null);
@@ -328,6 +336,23 @@ export default function FinanceiroDiario() {
     [persistDraft, restaurantId, selectedDate, setSelectedDate],
   );
 
+  // ── Deep link from Acerto Final: /financeiro-diario?restID=4&data=2026-09-17 ──
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const linkRest = Number(params.get('restID'));
+    const linkDate = params.get('data');
+    deepLinkRef.current = {
+      restID: Number.isInteger(linkRest) && linkRest > 0 ? linkRest : null,
+      data: linkDate && /^\d{4}-\d{2}-\d{2}$/.test(linkDate) && linkDate <= todayLisbon() ? linkDate : null,
+    };
+    if (deepLinkRef.current.data) setSelectedDate(deepLinkRef.current.data);
+    if (params.has('restID') || params.has('data')) {
+      // Drop the query so a page refresh keeps the day the user navigated to.
+      router.replace(router.pathname, undefined, { shallow: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -342,11 +367,12 @@ export default function FinanceiroDiario() {
           const res = await apiClient.getRestaurantes(true);
           if (res.data?.length) {
             setRestaurantes(res.data);
+            const preferredRestaurantId = deepLinkRef.current?.restID ?? restaurantId;
             const hasPersistedRestaurant =
-              restaurantId != null &&
-              res.data.some((rest: Restaurante) => rest.restID === restaurantId);
+              preferredRestaurantId != null &&
+              res.data.some((rest: Restaurante) => rest.restID === preferredRestaurantId);
             const nextRestaurantId = hasPersistedRestaurant
-              ? restaurantId
+              ? preferredRestaurantId
               : res.data[0].restID;
 
             setRestaurantId(nextRestaurantId);
@@ -1616,6 +1642,7 @@ export default function FinanceiroDiario() {
       formDirtyRef.current = false;
       setFormDirty(false);
       try { sessionStorage.removeItem(buildFormSessionKey(restaurantId, selectedDate)); } catch {}
+      setWeekReload((n) => n + 1);
       setSnapshotMessage('Snapshot salvo com sucesso.');
       setTimeout(() => setSnapshotMessage(''), 3000);
     } catch (err: any) {
@@ -1847,6 +1874,73 @@ export default function FinanceiroDiario() {
     }
   };
 
+  // ── Book-style day navigation ───────────────────────────────────────────
+  const today = todayLisbon();
+  // An empty date can still be stored by the old field (it allowed clearing); fall back to today.
+  const currentDay = /^\d{4}-\d{2}-\d{2}$/.test(selectedDate || '') ? selectedDate : today;
+  const weekStart = startOfWeek(currentDay);
+  const weekKey = `${restaurantId}:${weekStart}`;
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    let cancelled = false;
+    apiClient
+      .getFinanceiroSnapshotRange(restaurantId, weekStart, addDays(weekStart, 6))
+      .then((res) => {
+        if (cancelled) return;
+        const days: Record<string, number | null> = {};
+        ((res.data || []) as Array<{ data: string; valor_total_gorjetas?: number | null }>).forEach((day) => {
+          days[day.data] = day.valor_total_gorjetas ?? null;
+        });
+        setWeekSaved({ key: `${restaurantId}:${weekStart}`, days });
+      })
+      .catch(() => {
+        if (!cancelled) setWeekSaved(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantId, weekStart, weekReload]);
+
+  const weekChips = useMemo<DayChip[] | null>(() => {
+    if (!weekSaved || weekSaved.key !== weekKey || !restaurantId) return null;
+    return listDays(weekStart, addDays(weekStart, 6)).map((date): DayChip => {
+      if (date > today) return { date, status: 'future', note: '' };
+      let hasDraft = date === currentDay && formDirty;
+      try {
+        hasDraft = hasDraft || sessionStorage.getItem(buildFormSessionKey(restaurantId, date)) != null;
+      } catch {}
+      if (hasDraft) return { date, status: 'draft', note: 'rascunho' };
+      if (date in weekSaved.days) {
+        const tips = weekSaved.days[date];
+        return { date, status: 'saved', note: tips != null ? `€${Math.round(tips)}` : 'guardado' };
+      }
+      return { date, status: 'missing', note: 'sem dados' };
+    });
+  }, [weekSaved, weekKey, restaurantId, weekStart, today, currentDay, formDirty]);
+
+  const goToDay = useCallback(
+    (date: string) => {
+      const target = date > today ? today : date;
+      if (target !== selectedDate) handleDateSelectionChange(target);
+    },
+    [today, selectedDate, handleDateSelectionChange],
+  );
+
+  // ← / → flip days when the user is not typing in a field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, select, textarea, [contenteditable="true"]')) return;
+      if (e.key === 'ArrowLeft') goToDay(addDays(currentDay, -1));
+      if (e.key === 'ArrowRight') goToDay(addDays(currentDay, 1));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [goToDay, currentDay]);
+  // ────────────────────────────────────────────────────────────────────────
+
   if (authorized === null) return <Layout><div className={styles.container}><p className={styles.muted}>Verificando permissões…</p></div></Layout>;
 
   return (
@@ -1882,16 +1976,6 @@ export default function FinanceiroDiario() {
                   </option>
                 ))}
               </select>
-            </div>
-
-            <div className={styles.selectGroup}>
-              <label>Dia</label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => handleDateSelectionChange(e.target.value)}
-                data-view-allowed="true"
-              />
             </div>
 
             <div className={styles.selectGroup}>
@@ -1937,6 +2021,65 @@ export default function FinanceiroDiario() {
               </button>
             </div>
           </div>
+        </div>
+
+        <div className={styles.dayNav}>
+          <PagerBar
+            title={formatDayPT(currentDay)}
+            prevLabel="Dia anterior"
+            nextLabel="Dia seguinte"
+            onPrev={() => goToDay(addDays(currentDay, -1))}
+            onNext={() => goToDay(addDays(currentDay, 1))}
+            nextDisabled={currentDay >= today}
+          >
+            <button
+              type="button"
+              className={styles.pagerBtn}
+              onClick={() => goToDay(today)}
+              disabled={currentDay === today}
+              data-view-allowed="true"
+            >
+              Hoje
+            </button>
+            <input
+              type="date"
+              className={styles.pagerDateInput}
+              value={currentDay}
+              max={today}
+              onChange={(e) => e.target.value && goToDay(e.target.value)}
+              aria-label="Escolher dia"
+              data-view-allowed="true"
+            />
+          </PagerBar>
+          {weekChips && (
+            <>
+              <div className={styles.dayStripRow}>
+                <button
+                  type="button"
+                  className={styles.pagerBtn}
+                  onClick={() => goToDay(addDays(currentDay, -7))}
+                  aria-label="Semana anterior"
+                  title="Semana anterior"
+                  data-view-allowed="true"
+                >
+                  «
+                </button>
+                <DayStrip days={weekChips} selected={currentDay} onPick={goToDay} />
+                <button
+                  type="button"
+                  className={styles.pagerBtn}
+                  onClick={() => goToDay(addDays(currentDay, 7))}
+                  disabled={currentDay >= today}
+                  aria-label="Semana seguinte"
+                  title="Semana seguinte"
+                  data-view-allowed="true"
+                >
+                  »
+                </button>
+              </div>
+              <DayLegend />
+            </>
+          )}
         </div>
 
         {error && <div className={styles.error}>{error}</div>}

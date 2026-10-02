@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="pt-PT"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anual · Mock-up Grupo Ferreira</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;background:#f9fafb;color:#111827;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+a{color:#2563eb;text-decoration:none}
+h1{font-size:26px;color:#2c3e50;line-height:1.2}
+h2{font-size:17px;color:#2c3e50}
+.hiddenToggle{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
+.num,.table td,.table th{font-variant-numeric:tabular-nums}
+.mockbar{position:sticky;top:0;z-index:1100;display:flex;justify-content:space-between;align-items:center;gap:6px 12px;flex-wrap:wrap;background:#4c1d95;color:#ede9fe;font-size:12px;padding:6px 16px;min-height:30px}
+.mockbar a{color:#fff;font-weight:600}
+.mbRight{display:flex;gap:16px;align-items:center}
+.annSwitch{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:#fff;font-weight:600}
+.annSwitch i{width:28px;height:16px;border-radius:999px;background:#a78bfa;position:relative}
+.annSwitch i::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:left .15s}
+.annToggle:checked~.mockbar .annSwitch i{background:#22c55e}
+.annToggle:checked~.mockbar .annSwitch i::after{left:14px}
+.annToggle:not(:checked)~* .callout,.annToggle:not(:checked)~* .ann,.annToggle:not(:checked)~* .dot{display:none!important}
+.callout{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#7c3aed;color:#fff;font-size:11px;font-weight:700;vertical-align:middle;margin:0 4px;box-shadow:0 0 0 2px #ede9fe;font-style:normal;line-height:1}
+.ann.changes{background:#f5f3ff;border:1px dashed #a78bfa;border-radius:12px;padding:12px 16px;margin-bottom:18px;color:#3b0764}
+.ann.changes summary{font-weight:700;cursor:pointer}
+.ann.changes ul{margin:8px 0 0 18px;display:grid;gap:4px}
+.ann.notes{margin-top:24px;background:#f5f3ff;border:1px dashed #a78bfa;border-radius:12px;padding:16px;color:#3b0764}
+.ann.notes h2{color:#4c1d95;margin-bottom:10px}
+.noteList{list-style:none;display:grid;gap:8px}
+.noteList li{display:flex;gap:8px;align-items:flex-start}
+.noteList .callout{margin:0;flex:0 0 auto}
+small.ann,p.ann{display:block;color:#6d28d9;font-size:12px;margin-top:6px}
+.shell{display:grid;grid-template-columns:272px minmax(0,1fr);min-height:calc(100vh - 30px)}
+.sidebar{position:sticky;top:30px;height:calc(100vh - 30px);background:#fff;border-right:1px solid #e5e7eb;display:flex;flex-direction:column;z-index:1000}
+.brand{display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:700;font-size:16px}
+.casaSel{padding:12px 14px;border-bottom:1px solid #e5e7eb;display:grid;gap:6px}
+.casaSel>span{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;font-weight:600}
+.navScroll{flex:1;overflow-y:auto;padding:8px 10px}
+.navScroll ul{list-style:none;display:grid;gap:2px}
+.navGroup{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;font-weight:700;margin:14px 6px 4px}
+.navLink{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-radius:8px;border-left:3px solid transparent;color:#374151;font-weight:500}
+.navLink:hover{background:#f9fafb;border-left-color:#d1d5db;color:#111827}
+.navLink.active{background:#eff6ff;border-left-color:#2563eb;color:#1d4ed8;font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dot-new{background:#2563eb}.dot-chg{background:#f59e0b}
+.account{border-top:1px solid #e5e7eb;padding:12px 14px;display:flex;align-items:center;gap:10px}
+.avatar{width:32px;height:32px;border-radius:50%;background:#dbeafe;color:#1d4ed8;display:grid;place-items:center;font-weight:700;flex:0 0 auto}
+.acc{display:grid;flex:1;min-width:0}.acc b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.acc small{color:#6b7280;font-size:11px}
+.sair{border-radius:999px;padding:4px 10px;background:#111827;color:#fff;font-size:12px}
+.main{min-width:0}
+.mobilebar,.overlay{display:none}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.pageHeader{display:flex;justify-content:space-between;gap:16px 24px;align-items:flex-start;margin-bottom:18px;flex-wrap:wrap}
+.kicker{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;text-transform:uppercase;font-size:12px;letter-spacing:.08em;color:#6b7280}
+.subtitle{margin-top:6px;color:#55606d;max-width:720px}
+.headActions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:2px 8px;justify-self:start}
+.b-new{background:#dbeafe;color:#1d4ed8}.b-chg{background:#fef3c7;color:#92400e}.b-same{background:#f3f4f6;color:#6b7280}
+.auto{display:inline-block;font-size:11px;font-weight:600;color:#0f766e;background:#ccfbf1;border-radius:6px;padding:1px 6px;margin-left:4px;white-space:nowrap;text-transform:none;letter-spacing:0}
+.tag{display:inline-block;font-size:11px;font-weight:600;border-radius:6px;padding:2px 7px;white-space:nowrap}
+.tag-forn{background:#dbeafe;color:#1e40af}.tag-extra{background:#fef3c7;color:#92400e}.tag-fer{background:#fce7f3;color:#9d174d}.tag-out{background:#f3f4f6;color:#374151}.tag-nc{background:#fee2e2;color:#991b1b}.tag-fat{background:#f3f4f6;color:#374151}
+.st{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.st-ok{background:#dcfce7;color:#166534}.st-warn{background:#fef3c7;color:#92400e}.st-crit{background:#fee2e2;color:#991b1b}.st-info{background:#e0f2fe;color:#075985}
+.btn,.btnPrimary,.btnGhost,.btnDanger{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:10px;padding:9px 14px;font-weight:600;font-size:14px;border:1px solid transparent;cursor:pointer;white-space:nowrap}
+.btnPrimary{background:#2563eb;color:#fff}.btnPrimary:hover{background:#1d4ed8}
+.btn{background:#111827;color:#fff}.btn:hover{background:#000}
+.btnGhost{background:#fff;color:#111827;border-color:#d1d5db}.btnGhost:hover{border-color:#2563eb;color:#2563eb}
+.btnDanger{background:#fff;color:#b91c1c;border-color:#fecaca}.btnDanger:hover{background:#fef2f2}
+.btnSm{padding:5px 10px;font-size:12px;border-radius:8px}
+input[type=text],input[type=date],select,textarea{width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:8px;font:inherit;background:#fff;color:#111827;min-width:0}
+input[readonly]{background:#f9fafb;color:#374151}
+input:focus,select:focus,textarea:focus{outline:2px solid #93c5fd;border-color:#2563eb}
+.field{display:grid;gap:5px;font-size:13px;align-content:start}
+.field>span{font-weight:600;color:#374151}
+.field small{color:#6b7280;font-size:12px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip{display:inline-block;border:1px solid #d1d5db;background:#fff;color:#374151;border-radius:999px;padding:6px 12px;font-weight:600;font-size:13px}
+.chip:hover{border-color:#2563eb;color:#2563eb}
+.chip.on{background:#dbeafe;border-color:#2563eb;color:#1d4ed8}
+.filters{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px}
+.filters>.field{min-width:170px}
+.section{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px;margin-bottom:18px;box-shadow:0 4px 14px rgba(15,23,42,.04);min-width:0}
+.sectionHead{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.sectionActions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:18px}
+.kpi{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;box-shadow:0 3px 10px rgba(15,23,42,.05);display:grid;gap:4px;align-content:start;color:#111827}
+a.kpi:hover{border-color:#2563eb}
+.kpiLabel{font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.kpiValue{font-size:24px;color:#111827;font-weight:700;line-height:1.2}
+.kpiSub{font-size:13px;color:#55606d}
+.kpi.crit{border-color:#fecaca;background:#fffafa}
+.up{color:#006300;font-weight:700}.down{color:#b91c1c;font-weight:700}
+.up,.down{white-space:nowrap}
+.chart.h{max-width:680px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:18px;margin-bottom:18px}
+.grid2>.section{margin-bottom:0}
+.alerts{display:grid;gap:8px;margin-bottom:18px}
+.alert{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;border-radius:10px;padding:10px 14px;font-weight:500;border:1px solid}
+.alert-crit{background:#fef2f2;border-color:#fecaca;color:#7f1d1d}.alert-warn{background:#fffbeb;border-color:#fde68a;color:#78350f}.alert-info{background:#f0f9ff;border-color:#bae6fd;color:#0c4a6e}
+.tableWrap{overflow-x:auto;border:1px solid #e5e7eb;border-radius:10px;max-width:100%}
+.table{width:100%;border-collapse:collapse;font-size:13px}
+.table th{text-align:left;font-size:12px;color:#6b7280;background:#f9fafb;padding:9px 10px;font-weight:600;white-space:nowrap;border-bottom:1px solid #e5e7eb}
+.table td{padding:9px 10px;border-top:1px solid #f1f5f9;vertical-align:middle}
+.table tbody tr:hover td{background:#f8fafc}
+.table tfoot td{background:#f9fafb;font-weight:700;border-top:2px solid #e5e7eb}
+.table .r{text-align:right}
+.table input[type=text]{padding:5px 8px;min-width:90px;text-align:right}
+.muted{color:#6b7280}
+.small{font-size:12px}
+.more{display:none}
+.revealTarget:target .more{display:table-row-group}
+.revealTarget:target .revealBtn{display:none}
+.pagerBar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.pagerBtn{background:#fff;color:#111827;border:1px solid #d1d5db;border-radius:10px;padding:9px 14px;font-weight:600;white-space:nowrap}
+.pagerBtn:hover{border-color:#2563eb;color:#2563eb}
+.pagerTitle{flex:1;min-width:180px;text-align:center;font-size:17px;font-weight:700}
+.pagerBar input[type=date],.pagerBar select{width:auto}
+.dayStrip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.dayChip{display:grid;gap:2px;justify-items:center;border:1px solid transparent;border-radius:10px;padding:6px 4px;font-size:12px;font-weight:600}
+.dayChip b{font-size:15px}
+.dc-saved{background:#dcfce7;color:#166534;border-color:#bbf7d0}.dc-draft{background:#fef3c7;color:#b45309;border-color:#fcd34d}.dc-missing{background:#fee2e2;color:#991b1b;border-color:#fecaca}
+.dc-sel{outline:2px solid #2563eb;outline-offset:1px}
+.legend{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:12px;color:#55606d;margin-top:8px;align-items:center}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid #e5e7eb;margin:18px 0;align-items:center}
+.tab{padding:10px 16px;font-weight:600;color:#6b7280;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab:hover{color:#111827}
+.tab.on{color:#1d4ed8;border-bottom-color:#2563eb}
+.matrix th,.matrix td{text-align:center;padding:6px 5px;min-width:54px}
+.matrix th:first-child,.matrix td:first-child{position:sticky;left:0;background:#fff;text-align:left;min-width:160px;z-index:1;box-shadow:1px 0 0 #e5e7eb}
+.matrix thead th:first-child,.matrix tfoot td:first-child{background:#f9fafb}
+.matrix .dh{display:grid;gap:1px;justify-items:center}
+.matrix .dh small{font-weight:600;color:#991b1b}
+.matrix a.cell{display:block;color:#111827;border-radius:6px;padding:3px 0}
+.matrix a.cell:hover{background:#dbeafe}
+.m-off{color:#9ca3af;background:#f9fafb;font-size:11px}
+.m-miss,.table tbody tr:hover td.m-miss{background:#fee2e2;color:#991b1b;font-weight:700}
+.m-miss a.cell{color:#991b1b}
+.m-na{background:repeating-linear-gradient(45deg,#f9fafb,#f9fafb 4px,#eceff3 4px,#eceff3 8px)}
+tr.m-miss td{background:#fef2f2}
+.formula{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:15px}
+.formula .term{display:grid;gap:2px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:8px 12px}
+.formula .term small{font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.formula .op{font-size:20px;color:#6b7280;font-weight:700}
+.formula .res{background:#ecfdf5;border-color:#a7f3d0}
+.formula .res b{font-size:22px;color:#065f46}
+.excluded{margin-top:12px;font-size:13px;color:#55606d;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.excluded s{color:#9ca3af}
+.chart{width:100%;height:auto;display:block}
+.chart .grid{stroke:#e1e0d9;stroke-width:1}
+.chart .axis{stroke:#c3c2b7;stroke-width:1}
+.chart .tick{fill:#898781;font-size:11px}
+.chart .dl{fill:#52514e;font-size:11px;font-weight:600}
+.chart .ref{stroke:#52514e;stroke-width:1.5;stroke-dasharray:5 4}
+.chart .refLabel{fill:#52514e;font-size:11px;font-weight:600}
+.chart path:hover{opacity:.8}
+.meter{position:relative;height:10px;border-radius:999px;background:#eef2f7;min-width:110px}
+.meter span{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:#2a78d6}
+.meter i{position:absolute;top:-4px;bottom:-4px;width:2px;background:#111827}
+.keys{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#52514e;margin-bottom:6px}
+.keys i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.keys i.dash{width:16px;height:0;border-top:2px dashed #52514e;border-radius:0;vertical-align:3px}
+.pl td{padding:8px 10px}
+.pl td:first-child{min-width:220px}
+.pl td:nth-child(4){min-width:140px}
+.pl .sub td{color:#55606d}
+.pl .sub td:first-child{padding-left:28px}
+.pl .tot td{font-weight:700;background:#f9fafb}
+.pl .res td{font-weight:800;font-size:15px;background:#ecfdf5;color:#065f46}
+.modal{display:none;position:fixed;inset:0;z-index:2000;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow-y:auto;background:rgba(17,24,39,.5)}
+.modal:target{display:flex}
+.modalBg{position:fixed;inset:0}
+.modalCard{position:relative;background:#fff;border-radius:14px;width:min(580px,100%);box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.modalHead{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid #e5e7eb}
+.modalHead .x{color:#6b7280;font-size:18px}
+.modalBody{padding:18px;display:grid;gap:14px}
+.modalFoot{padding:14px 18px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.radioChips{display:flex;gap:6px;flex-wrap:wrap}
+.radioChips label{border:1px solid #d1d5db;border-radius:999px;padding:6px 12px;font-weight:600;font-size:13px;cursor:pointer}
+.radioChips label:hover{border-color:#2563eb}
+.catF:checked~.field .radioChips label[for=catF],.catE:checked~.field .radioChips label[for=catE],.catH:checked~.field .radioChips label[for=catH],.catO:checked~.field .radioChips label[for=catO],.tipoF:checked~.field .radioChips label[for=tipoF],.tipoN:checked~.field .radioChips label[for=tipoN]{background:#dbeafe;border-color:#2563eb;color:#1d4ed8}
+.fFunc{display:none}
+.catE:checked~.fFunc,.catH:checked~.fFunc{display:grid}
+.catE:checked~.fForn,.catH:checked~.fForn,.catO:checked~.fForn,.catE:checked~.fFat,.catH:checked~.fFat,.catO:checked~.fFat{display:none}
+.warnBox,.critBox,.okBox{border-radius:10px;padding:10px 12px;font-size:13px;border:1px solid}
+.warnBox{background:#fffbeb;border-color:#fde68a;color:#78350f}
+.critBox{background:#fef2f2;border-color:#fecaca;color:#7f1d1d}
+.checklist{list-style:none;display:grid;gap:8px}
+.mapGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.screen{display:grid;gap:6px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;color:#111827;box-shadow:0 3px 10px rgba(15,23,42,.05);align-content:start}
+.screen:hover{border-color:#2563eb;box-shadow:0 6px 18px rgba(37,99,235,.12)}
+.screen b{font-size:15px}
+.screen span:last-child{color:#55606d;font-size:13px}
+.flow{display:flex;gap:8px;flex-wrap:wrap;align-items:stretch}
+.flow .step{flex:1 1 150px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:12px;display:grid;gap:4px;color:#111827;align-content:start}
+.flow .step:hover{border-color:#2563eb}
+.flow .step small{color:#6b7280}
+.flow .arrow{align-self:center;color:#9ca3af;font-size:20px}
+.loginWrap{min-height:calc(100vh - 30px);display:grid;place-items:center;padding:24px 16px}
+.loginCard{width:min(380px,100%);background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:28px;display:grid;gap:16px;box-shadow:0 10px 30px rgba(15,23,42,.08)}
+@media (max-width:768px){
+  .shell{display:block}
+  .sidebar{position:fixed;top:0;left:0;bottom:0;height:100vh;width:272px;transform:translateX(-100%);transition:transform .2s}
+  .navToggle:checked~.shell .sidebar{transform:none}
+  .navToggle:checked~.shell .overlay{display:block;position:fixed;inset:0;background:rgba(17,24,39,.4);z-index:999}
+  .mobilebar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff;border-bottom:1px solid #e5e7eb;position:sticky;top:30px;z-index:900}
+  .hamb{font-size:18px;cursor:pointer;padding:2px 9px;border:1px solid #e5e7eb;border-radius:8px}
+  .container{padding:16px}
+  h1{font-size:22px}
+  .kpiValue{font-size:20px}
+  .dayChip span{display:none}
+  .pagerTitle{order:-1;flex-basis:100%}
+  .flow .arrow{display:none}
+}
+@media print{.mockbar,.sidebar,.ann,.callout,.headActions{display:none!important}.shell{display:block}}
+</style></head>
+<body>
+<input type="checkbox" id="ann" class="hiddenToggle annToggle" checked aria-label="Mostrar anotações">
+<input type="checkbox" id="nav" class="hiddenToggle navToggle" aria-label="Abrir menu">
+<div class="mockbar"><span><b>MOCK-UP</b> · Gestão financeira Grupo Ferreira · v1 · 2 out 2026</span><span class="mbRight"><a href="index.html">← Mapa do mock-up</a><label for="ann" class="annSwitch"><i></i>Mostrar anotações</label></span></div>
+<div class="shell">
+<nav class="sidebar" aria-label="Menu principal">
+  <a href="inicio.html" class="brand"><svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#111827"/><path d="M10 23V9h11M10 16h8" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/><circle cx="23" cy="22" r="2.4" fill="#2a78d6"/></svg><span>Grupo Ferreira</span></a>
+  <div class="casaSel"><span>Casa <b class="callout" title="Ver interação C">C</b></span><select><option selected>Ferrary</option><option>Casa Ribeira</option><option>Casa Alfama</option><option>Casa Chiado</option><option>Casa Baixa</option><option>Casa Belém</option></select><small class="ann">Uma escolha vale para todas as páginas (hoje cada página tem a sua).</small></div>
+  <div class="navScroll"><ul><li><a href="inicio.html" class="navLink">Início<i class="dot dot-chg" title="Alterado"></i></a></li></ul><p class="navGroup">Operação</p><ul><li><a href="fecho-diario.html" class="navLink">Fecho diário<i class="dot dot-chg" title="Alterado"></i></a></li><li><a href="acerto-final.html" class="navLink">Acerto de gorjetas<i class="dot dot-chg" title="Alterado"></i></a></li></ul><p class="navGroup">Financeiro · donos</p><ul><li><a href="painel.html" class="navLink">Painel<i class="dot dot-new" title="Novo"></i></a></li><li><a href="faturas.html" class="navLink">Faturas<i class="dot dot-new" title="Novo"></i></a></li><li><a href="fornecedores.html" class="navLink">Fornecedores<i class="dot dot-new" title="Novo"></i></a></li><li><a href="pessoal.html" class="navLink">Pessoal<i class="dot dot-new" title="Novo"></i></a></li><li><a href="custos-mensais.html" class="navLink">Custos do mês<i class="dot dot-new" title="Novo"></i></a></li><li><a href="comparativo.html" class="navLink">Comparativo<i class="dot dot-new" title="Novo"></i></a></li><li><a href="anual.html" class="navLink active">Anual<i class="dot dot-new" title="Novo"></i></a></li></ul><p class="navGroup">Gorjetas</p><ul><li><a href="relatorios.html" class="navLink">Relatórios</a></li><li><a href="regras.html" class="navLink">Regras de distribuição</a></li></ul><p class="navGroup">Administração</p><ul><li><a href="funcionarios.html" class="navLink">Funcionários<i class="dot dot-chg" title="Alterado"></i></a></li><li><a href="restaurantes.html" class="navLink">Restaurantes<i class="dot dot-chg" title="Alterado"></i></a></li><li><a href="utilizadores.html" class="navLink">Utilizadores<i class="dot dot-chg" title="Alterado"></i></a></li><li><a href="auditoria.html" class="navLink">Auditoria<i class="dot dot-chg" title="Alterado"></i></a></li></ul></div>
+  <div class="account"><span class="avatar">P</span><span class="acc"><b>proprietario@grupoferreira.pt</b><small>Administrador</small></span><a href="login.html" class="sair">Sair</a></div>
+</nav>
+<label for="nav" class="overlay" aria-hidden="true"></label>
+<main class="main">
+<div class="mobilebar"><label for="nav" class="hamb" aria-label="Abrir menu">☰</label><svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#111827"/><path d="M10 23V9h11M10 16h8" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/><circle cx="23" cy="22" r="2.4" fill="#2a78d6"/></svg><b>Grupo Ferreira</b></div>
+<div class="container">
+<header class="pageHeader">
+  <div><p class="kicker">Financeiro · donos <span class="badge b-new">Novo</span></p><h1>Visão anual</h1><p class="subtitle">O separador PORCENTAGENS ANO, preenchido sozinho.</p></div>
+  <div class="headActions"></div>
+</header>
+<details class="ann changes" open><summary>O que muda neste ecrã</summary><ul><li>Substitui o separador PORCENTAGENS ANO, que estava todo em #DIV/0!: cada mês preenche-se à medida que os dias são fechados.</li><li>Meses sem dados mostram “—” em vez de erros.</li><li>Comparação lado a lado com 2025.</li></ul></details>
+<div class="pagerBar"><a class="pagerBtn" href="anual.html">‹ Anterior</a><a class="pagerBtn" href="anual.html">Este ano</a><div class="pagerTitle">2026 <b class="callout" title="Ver interação 1">1</b></div><a class="pagerBtn" href="anual.html">Seguinte ›</a></div>
+<div class="kpis"><div class="kpi "><span class="kpiLabel">Faturação jan–jul 2026</span><strong class="kpiValue">1 248 603,94 €</strong><span class="kpiSub"><span class="up">▲ 23,6%</span> vs jan–jul 2025</span></div><div class="kpi "><span class="kpiLabel">Food cost médio</span><strong class="kpiValue">29,1%</strong><span class="kpiSub">limite 28%</span></div><div class="kpi "><span class="kpiLabel">Pessoal médio</span><strong class="kpiValue">24,0%</strong><span class="kpiSub">da faturação c/ IVA s/ gorjetas</span></div></div>
+<section class="section"><div class="sectionHead"><h2>Faturação por mês <b class="callout" title="Ver interação 2">2</b></h2><div class="sectionActions"></div></div><div class="keys"><span><i style="background:#2a78d6"></i>2026</span><span><i style="background:#eb6834"></i>2025</span></div><svg viewBox="0 0 760 240" class="chart" role="img" aria-label="Faturação mensal 2026 e 2025 em barras agrupadas"><line x1="58" x2="748" y1="212" y2="212" class="axis"/><text x="52" y="216" class="tick" text-anchor="end">0 mil</text><line x1="58" x2="748" y1="163" y2="163" class="grid"/><text x="52" y="167" class="tick" text-anchor="end">75 mil</text><line x1="58" x2="748" y1="114" y2="114" class="grid"/><text x="52" y="118" class="tick" text-anchor="end">150 mil</text><line x1="58" x2="748" y1="65" y2="65" class="grid"/><text x="52" y="69" class="tick" text-anchor="end">225 mil</text><line x1="58" x2="748" y1="16" y2="16" class="grid"/><text x="52" y="20" class="tick" text-anchor="end">300 mil</text><path d="M64.325,212V123.023774Q64.325,119.023774 68.325,119.023774H81.75Q85.75,119.023774 85.75,123.023774V212Z" fill="#2a78d6"><title>Janeiro 2026: 142 310,55 €</title></path><path d="M87.75,212V136.63287066666666Q87.75,132.63287066666666 91.75,132.63287066666666H105.175Q109.175,132.63287066666666 109.175,136.63287066666666V212Z" fill="#eb6834"><title>Janeiro 2025: 121 480,30 €</title></path><text x="86.75" y="232" class="tick" text-anchor="middle">jan</text><path d="M121.825,212V125.24925599999999Q121.825,121.24925599999999 125.825,121.24925599999999H139.25Q143.25,121.24925599999999 143.25,125.24925599999999V212Z" fill="#2a78d6"><title>Fevereiro 2026: 138 904,20 €</title></path><path d="M145.25,212V138.96830866666667Q145.25,134.96830866666667 149.25,134.96830866666667H162.675Q166.675,134.96830866666667 166.675,138.96830866666667V212Z" fill="#eb6834"><title>Fevereiro 2025: 117 905,65 €</title></path><text x="144.25" y="232" class="tick" text-anchor="middle">fev</text><path d="M179.325,212V110.49796933333333Q179.325,106.49796933333333 183.325,106.49796933333333H196.75Q200.75,106.49796933333333 200.75,110.49796933333333V212Z" fill="#2a78d6"><title>Março 2026: 161 482,70 €</title></path><path d="M202.75,212V127.66253866666668Q202.75,123.66253866666668 206.75,123.66253866666668H220.175Q224.175,123.66253866666668 224.175,127.66253866666668V212Z" fill="#eb6834"><title>Março 2025: 135 210,40 €</title></path><text x="201.75" y="232" class="tick" text-anchor="middle">mar</text><path d="M236.825,212V95.64597133333332Q236.825,91.64597133333332 240.825,91.64597133333332H254.25Q258.25,91.64597133333332 258.25,95.64597133333332V212Z" fill="#2a78d6"><title>Abril 2026: 184 215,35 €</title></path><path d="M260.25,212V116.196212Q260.25,112.196212 264.25,112.196212H277.675Q281.675,112.196212 281.675,116.196212V212Z" fill="#eb6834"><title>Abril 2025: 152 760,90 €</title></path><text x="259.25" y="232" class="tick" text-anchor="middle">abr</text><path d="M294.325,212V87.40433466666664Q294.325,83.40433466666664 298.325,83.40433466666664H311.75Q315.75,83.40433466666664 315.75,87.40433466666664V212Z" fill="#2a78d6"><title>Maio 2026: 196 830,10 €</title></path><path d="M317.75,212V112.55103666666666Q317.75,108.55103666666666 321.75,108.55103666666666H335.175Q339.175,108.55103666666666 339.175,112.55103666666666V212Z" fill="#eb6834"><title>Maio 2025: 158 340,25 €</title></path><text x="316.75" y="232" class="tick" text-anchor="middle">mai</text><path d="M351.825,212V81.98967133333335Q351.825,77.98967133333335 355.825,77.98967133333335H369.25Q373.25,77.98967133333335 373.25,81.98967133333335V212Z" fill="#2a78d6"><title>Junho 2026: 205 117,85 €</title></path><path d="M375.25,212V111.39101066666667Q375.25,107.39101066666667 379.25,107.39101066666667H392.675Q396.675,107.39101066666667 396.675,111.39101066666667V212Z" fill="#eb6834"><title>Junho 2025: 160 115,80 €</title></path><text x="374.25" y="232" class="tick" text-anchor="middle">jun</text><path d="M409.325,212V72.43444919999999Q409.325,68.43444919999999 413.325,68.43444919999999H426.75Q430.75,68.43444919999999 430.75,72.43444919999999V212Z" fill="#2a78d6"><title>Julho 2026: 219 743,19 €</title></path><path d="M432.75,212V108.38552706666667Q432.75,104.38552706666667 436.75,104.38552706666667H450.175Q454.175,104.38552706666667 454.175,108.38552706666667V212Z" fill="#eb6834"><title>Julho 2025: 164 716,03 €</title></path><text x="431.75" y="232" class="tick" text-anchor="middle">jul</text><path d="M490.25,212V104.12313466666666Q490.25,100.12313466666666 494.25,100.12313466666666H507.675Q511.675,100.12313466666666 511.675,104.12313466666666V212Z" fill="#eb6834"><title>Agosto 2025: 171 240,10 €</title></path><text x="489.25" y="232" class="tick" text-anchor="middle">ago</text><path d="M547.75,212V117.75143933333332Q547.75,113.75143933333332 551.75,113.75143933333332H565.175Q569.175,113.75143933333332 569.175,117.75143933333332V212Z" fill="#eb6834"><title>Setembro 2025: 150 380,45 €</title></path><text x="546.75" y="232" class="tick" text-anchor="middle">set</text><path d="M605.25,212V125.23854133333333Q605.25,121.23854133333333 609.25,121.23854133333333H622.675Q626.675,121.23854133333333 626.675,125.23854133333333V212Z" fill="#eb6834"><title>Outubro 2025: 138 920,60 €</title></path><text x="604.25" y="232" class="tick" text-anchor="middle">out</text><path d="M662.75,212V134.78364333333332Q662.75,130.78364333333332 666.75,130.78364333333332H680.175Q684.175,130.78364333333332 684.175,134.78364333333332V212Z" fill="#eb6834"><title>Novembro 2025: 124 310,75 €</title></path><text x="661.75" y="232" class="tick" text-anchor="middle">nov</text><path d="M720.25,212V118.08480266666666Q720.25,114.08480266666666 724.25,114.08480266666666H737.675Q741.675,114.08480266666666 741.675,118.08480266666666V212Z" fill="#eb6834"><title>Dezembro 2025: 149 870,20 €</title></path><text x="719.25" y="232" class="tick" text-anchor="middle">dez</text><text x="431.75" y="62.43444919999999" class="dl" text-anchor="middle">220 mil</text></svg></section>
+<section class="section"><div class="sectionHead"><h2>Mês a mês <b class="callout" title="Ver interação 3">3</b></h2><div class="sectionActions"><a class="btnGhost" href="anual.html">Exportar CSV</a></div></div><div class="tableWrap"><table class="table "><thead><tr><th scope="col">Mês</th><th scope="col">Vendas 2026</th><th scope="col">Vendas 2025</th><th scope="col">vs 2025</th><th scope="col">Despesas %</th><th scope="col">Ordenados %</th><th scope="col">Food cost %</th><th scope="col">Balanço</th><th scope="col">Balanço %</th></tr></thead><tbody><tr><td><a href="painel.html">Janeiro</a></td><td><span class="num">142 310,55 €</span></td><td><span class="num">121 480,30 €</span></td><td><span class="up">▲ 17,1%</span></td><td>64,0%</td><td>27,5%</td><td>29,1% <span class="st st-crit">▲ </span></td><td><span class="num">45 761,77 €</span></td><td>36,0%</td></tr><tr><td><a href="painel.html">Fevereiro</a></td><td><span class="num">138 904,20 €</span></td><td><span class="num">117 905,65 €</span></td><td><span class="up">▲ 17,8%</span></td><td>63,9%</td><td>28,1%</td><td>28,4% <span class="st st-crit">▲ </span></td><td><span class="num">44 790,48 €</span></td><td>36,1%</td></tr><tr><td><a href="painel.html">Março</a></td><td><span class="num">161 482,70 €</span></td><td><span class="num">135 210,40 €</span></td><td><span class="up">▲ 19,4%</span></td><td>62,2%</td><td>25,0%</td><td>29,8% <span class="st st-crit">▲ </span></td><td><span class="num">54 523,15 €</span></td><td>37,8%</td></tr><tr><td><a href="painel.html">Abril</a></td><td><span class="num">184 215,35 €</span></td><td><span class="num">152 760,90 €</span></td><td><span class="up">▲ 20,6%</span></td><td>58,5%</td><td>23,2%</td><td>27,9% <span class="st st-ok">✓ </span></td><td><span class="num">68 286,85 €</span></td><td>41,5%</td></tr><tr><td><a href="painel.html">Maio</a></td><td><span class="num">196 830,10 €</span></td><td><span class="num">158 340,25 €</span></td><td><span class="up">▲ 24,3%</span></td><td>58,8%</td><td>22,6%</td><td>28,8% <span class="st st-crit">▲ </span></td><td><span class="num">72 435,57 €</span></td><td>41,2%</td></tr><tr><td><a href="painel.html">Junho</a></td><td><span class="num">205 117,85 €</span></td><td><span class="num">160 115,80 €</span></td><td><span class="up">▲ 28,1%</span></td><td>59,0%</td><td>22,0%</td><td>29,6% <span class="st st-crit">▲ </span></td><td><span class="num">75 119,12 €</span></td><td>41,0%</td></tr><tr><td><a href="painel.html"><b>Julho</b></a></td><td><span class="num">219 743,19 €</span></td><td><span class="num">164 716,03 €</span></td><td><span class="up">▲ 33,4%</span></td><td>57,1%</td><td>19,4%</td><td>30,3% <span class="st st-crit">▲ </span></td><td><span class="num">84 119,15 €</span></td><td>42,9%</td></tr><tr><td><span class="muted">Agosto</span></td><td><span class="muted">—</span></td><td><span class="num">171 240,10 €</span></td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><td><span class="muted">Setembro</span></td><td><span class="muted">—</span></td><td><span class="num">150 380,45 €</span></td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><td><span class="muted">Outubro</span></td><td><span class="muted">—</span></td><td><span class="num">138 920,60 €</span></td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><td><span class="muted">Novembro</span></td><td><span class="muted">—</span></td><td><span class="num">124 310,75 €</span></td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><td><span class="muted">Dezembro</span></td><td><span class="muted">—</span></td><td><span class="num">149 870,20 €</span></td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></div></section>
+<p class="ann">Percentagens sobre a faturação c/ IVA s/ gorjetas. Os meses exceto julho são ilustrativos.</p>
+<aside class="ann notes"><h2>Interações</h2><ol class="noteList"><li><b class="callout">1</b><span>‹ › mudam de ano.</span></li><li><b class="callout">2</b><span>Passar o rato numa barra mostra o mês e o valor.</span></li><li><b class="callout">3</b><span>Clicar num mês abre o Painel desse mês.</span></li></ol></aside>
+</div></main></div>
+
+</body></html>

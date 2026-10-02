@@ -8,6 +8,16 @@ import { OPERATIONAL_ROLES, isReadOnlyRole } from '../lib/roles';
 import ReadOnlyBanner from '../components/ReadOnlyBanner';
 import styles from '../styles/financeiro-diario.module.css';
 import { useSessionPageState } from '../hooks/useSessionPageState';
+import { DayChip, DayLegend, DayStrip, PagerBar } from '../components/DayPager';
+import {
+  PeriodPreset,
+  formatRangePT,
+  listDays,
+  matchPreset,
+  presetPeriod,
+  shiftPeriod,
+  todayLisbon,
+} from '../lib/dates';
 
 interface Restaurante {
   restID: number;
@@ -114,14 +124,17 @@ interface SavedAcertoPeriodo {
   entries: SavedAcertoEntry[];
 }
 
-const TODAY = new Date().toISOString().split('T')[0];
-const FIRST_DAY_OF_MONTH = new Date(
-  new Date().getFullYear(),
-  new Date().getMonth(),
-  1,
-)
-  .toISOString()
-  .split('T')[0];
+// Lisbon business day. The previous UTC-based values could land on the
+// previous day/month (e.g. the 1st of the month became the last day before it).
+const TODAY = todayLisbon();
+const FIRST_DAY_OF_MONTH = presetPeriod('month', TODAY).from;
+
+const PERIOD_PRESETS: Array<{ id: PeriodPreset; label: string }> = [
+  { id: 'week', label: 'Esta semana' },
+  { id: 'lastweek', label: 'Semana passada' },
+  { id: 'month', label: 'Este mês' },
+  { id: 'lastmonth', label: 'Mês passado' },
+];
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 const currency = (value: number) => `€ ${round2(value).toFixed(2)}`;
@@ -986,6 +999,32 @@ export default function AcertoFinalPage() {
     calculations.remainingBySource.FINANCEIRO < 0 ||
     calculations.remainingBySource.ABSOLUTE_EXTERNAL < 0;
 
+  // ── Book-style period navigation ────────────────────────────────────────
+  const periodFrom = fromDate || TODAY;
+  const periodTo = toDate || periodFrom;
+  const activePreset = matchPreset(periodFrom, periodTo, todayLisbon());
+
+  const setPeriod = (range: { from: string; to: string }) => {
+    setFromDate(range.from);
+    setToDate(range.to);
+  };
+
+  const periodChips = useMemo<DayChip[]>(() => {
+    const saved = new Set(snapshots.map((day) => day.data));
+    const today = todayLisbon();
+    return listDays(periodFrom, periodTo, 93)
+      .map((date): DayChip => ({
+        date,
+        status: date > today ? 'future' : saved.has(date) ? 'saved' : 'missing',
+      }));
+  }, [snapshots, periodFrom, periodTo]);
+  const missingDays = periodChips.filter((chip) => chip.status === 'missing').length;
+
+  const openDayInFinanceiro = (date: string) => {
+    router.push(`/financeiro-diario?restID=${restID}&data=${date}`);
+  };
+  // ────────────────────────────────────────────────────────────────────────
+
   if (authorized === null) {
     return (
       <Layout>
@@ -1026,6 +1065,22 @@ export default function AcertoFinalPage() {
               </select>
             </div>
             <div className={styles.selectGroup}>
+              <label>Período</label>
+              <div className={styles.pagerBar}>
+                {PERIOD_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className={`${styles.pagerBtn} ${activePreset === preset.id ? styles.pagerBtnActive : ''}`}
+                    onClick={() => setPeriod(presetPeriod(preset.id, todayLisbon()))}
+                    data-view-allowed="true"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className={styles.selectGroup}>
               <label>De</label>
               <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
             </div>
@@ -1045,6 +1100,33 @@ export default function AcertoFinalPage() {
               </button>
             </div>
           </div>
+        </div>
+
+        <div className={styles.dayNav}>
+          <PagerBar
+            title={formatRangePT(periodFrom, periodTo)}
+            prevLabel="Período anterior"
+            nextLabel="Período seguinte"
+            onPrev={() => setPeriod(shiftPeriod(periodFrom, periodTo, -1))}
+            onNext={() => setPeriod(shiftPeriod(periodFrom, periodTo, 1))}
+            nextDisabled={shiftPeriod(periodFrom, periodTo, 1).from > todayLisbon()}
+          />
+          {restID && !loading && periodChips.length > 0 && (
+            <>
+              <DayStrip
+                days={periodChips}
+                onPick={openDayInFinanceiro}
+                scroll={periodChips.length > 7}
+              />
+              <DayLegend />
+              {missingDays > 0 && (
+                <div className={styles.periodWarning}>
+                  {missingDays} dia(s) sem dados guardados neste período. Clique num dia vermelho
+                  para o abrir no Financeiro Diário.
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {error && <div className={styles.error}>{error}</div>}
