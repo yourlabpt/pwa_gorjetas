@@ -37,3 +37,8 @@ O sistema SHALL determinar os participantes de um dia D como os colaboradores at
 Desativar um colaborador na data X SHALL deixar inalterados todos os dias anteriores a X. Reativar em X+N SHALL deixar inalterados os dias no intervalo [X, X+N), mesmo que voltem a ser gravados. Gravar um dia SHALL preservar os valores guardados de participantes omitidos pelo cliente e SHALL ignorar entradas de não participantes.
 
 Alterações de estado (ativar, desativar, eliminar) SHALL emitir evento de auditoria com valores antes/depois.
+
+### Requirement: Primeiro requisito
+<!-- yourlab: id=UQ-006; type=undefined; priority=high; module=Backend -->
+
+O sistema SHALL ….
