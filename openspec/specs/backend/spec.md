@@ -42,3 +42,8 @@ Alterações de estado (ativar, desativar, eliminar) SHALL emitir evento de audi
 <!-- yourlab: id=UQ-006; type=undefined; priority=high; module=Backend -->
 
 O sistema SHALL ….
+
+### Requirement: Primeiro requisito
+<!-- yourlab: id=UQ-007; type=undefined; priority=high; module=Backend -->
+
+O sistema SHALL ….
