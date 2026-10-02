@@ -5,7 +5,7 @@ status: planeada
 ---
 
 ## Objetivo
-Os donos leem cada casa e o grupo sem copiar nada à mão: conta de exploração do mês, food cost face ao limite, balanço, comparação entre casas e com o ano anterior. Substitui os separadores CONTROLE COM GRÁFICO e PORCENTAGENS ANO. Esforço estimado: 7–9 dias. Só arranca depois de o mock-up ser aceite.
+Os donos leem cada casa e o grupo sem copiar nada à mão: conta de exploração do mês, food cost face ao limite, balanço, comparação entre casas e com o ano anterior. Substitui os separadores CONTROLE COM GRÁFICO e PORCENTAGENS ANO. Esforço estimado: 8–10 dias (com os gráficos de comparação entre casas). Só arranca depois de o mock-up ser aceite.
 
 ## Features
 
@@ -26,7 +26,17 @@ Os donos leem cada casa e o grupo sem copiar nada à mão: conta de exploração
 
 ### Comparativo de casas
 - Requisitos: painel-kpis
-`GET /painel/comparativo?ano&mes` com as casas a que o utilizador tem acesso (`getAllowedRestaurantes`). Mostra uma tabela com semáforo e as barras de food cost com a linha de 28%.
+Ecrã para donos e administradores com várias casas. Quem tem uma só casa não o vê.
+1. `GET /painel/comparativo?inicio&fim&casas=` com as casas a que o utilizador tem acesso (`getAllowedRestaurantes`), para um mês, trimestre, ano até hoje ou datas à escolha. Devolve, por casa, a faturação e a do ano anterior, o balanço, as seis partes da faturação (food cost, pessoal, chamadores, água/gás/luz, outras despesas, balanço) e a faturação mês a mês.
+2. Gráficos em SVG próprio, sem biblioteca. Cada categoria tem sempre a mesma cor (as seis primeiras cores categóricas validadas para daltonismo, sempre pela mesma ordem):
+   - faturação por casa, com a marca do ano anterior;
+   - balanço por casa e parte do ganho do grupo;
+   - gráfico circular da divisão da faturação do grupo, com a tabela de valores ao lado;
+   - barras de 100% com a mesma divisão por casa;
+   - food cost face ao limite de 28%;
+   - evolução mensal por casa, todas na mesma escala.
+3. Escolher que casas comparar; exportar o relatório em PDF ou CSV e imprimir.
+4. O Painel de cada casa também tem o gráfico circular, e a comparação com a média do grupo para quem tem várias casas.
 
 ### Visão anual
 - Requisitos: painel-kpis

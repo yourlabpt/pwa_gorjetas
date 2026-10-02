@@ -42,6 +42,26 @@ As somas SHALL ser feitas em decimal.
 
 O comparativo SHALL incluir só as casas a que o utilizador tem acesso.
 
+### Requirement: Gráficos de comparação entre casas
+<!-- yourlab: id=FR-28; type=functional; module=Frontend; priority=high -->
+
+Para quem tem acesso a mais de uma casa, o comparativo SHALL mostrar:
+- a faturação por casa, com a do ano anterior;
+- o balanço por casa e a sua parte no balanço do grupo;
+- um gráfico circular com a divisão da faturação do grupo (food cost, pessoal, chamadores, água/gás/luz, outras despesas, balanço);
+- a mesma divisão por casa em barras de 100%;
+- a evolução mensal por casa, todas na mesma escala.
+
+Cada categoria SHALL ter sempre a mesma cor. Cada gráfico SHALL ter os valores numa tabela ou legenda com números. O utilizador SHALL poder escolher as casas e o período (mês, trimestre, ano até hoje, datas à escolha).
+
+#### Scenario: As partes somam a faturação
+- **WHEN** o gráfico circular mostra uma casa ou o grupo
+- **THEN** a soma das seis partes é igual à faturação c/ IVA s/ gorjetas desse período
+
+#### Scenario: Gerente com uma casa
+- **WHEN** um gerente só tem acesso à Ferrary
+- **THEN** não vê o comparativo, e no Painel vê o gráfico circular da Ferrary sem a média do grupo
+
 ### Requirement: Meses sem dados
 <!-- yourlab: id=FR-21; type=functional; module=Frontend; priority=medium -->
 
